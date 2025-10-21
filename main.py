@@ -198,9 +198,9 @@ def run_prophet(df_sku: pd.DataFrame, holidays_df: pd.DataFrame, horizon_weeks: 
     out = fcst[cols].copy()
     out.rename(
         columns={
-            "yhat": "prophet_yhat",
-            "yhat_lower": "prophet_yhat_lower",
-            "yhat_upper": "prophet_yhat_upper",
+            "yhat": "house_lager_yhat",
+            "yhat_lower": "house_lager_yhat_lower",
+            "yhat_upper": "house_lager_yhat_upper",
         },
         inplace=True,
     )
@@ -248,9 +248,9 @@ def run_neuralprophet(df_sku: pd.DataFrame, holidays_df: pd.DataFrame, horizon_w
             forecast = _predict_model()
     else:
         forecast = _predict_model()
-    out = forecast[["ds", "yhat1"]].rename(columns={"yhat1": "neural_yhat"})
-    out["neural_yhat_lower"] = forecast.get("yhat1 5.0%", np.nan)
-    out["neural_yhat_upper"] = forecast.get("yhat1 95.0%", np.nan)
+    out = forecast[["ds", "yhat1"]].rename(columns={"yhat1": "mind_melt_double_ipa_yhat"})
+    out["mind_melt_double_ipa_yhat_lower"] = forecast.get("yhat1 5.0%", np.nan)
+    out["mind_melt_double_ipa_yhat_upper"] = forecast.get("yhat1 95.0%", np.nan)
     return out
 
 def run_sarimax(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
@@ -265,14 +265,15 @@ def run_sarimax(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
     conf_cols = [c.lower() for c in conf.columns]
     lower_col = conf.columns[0] if "lower" in conf_cols[0] else conf.columns[1]
     upper_col = conf.columns[1] if "upper" in conf_cols[1] else conf.columns[0]
-    conf = conf.rename(columns={lower_col: "sarimax_yhat_lower", upper_col: "sarimax_yhat_upper"})
+    conf = conf.rename(columns={lower_col: "heritage_blend_yhat_lower", upper_col: "heritage_blend_yhat_upper"})
+
     future_index = pd.date_range(start=ts.index.max() + pd.Timedelta(weeks=1), periods=horizon_weeks, freq=WEEK_FREQ)
-    hist_df = pd.DataFrame({"ds": ts.index, "sarimax_yhat": res.fittedvalues})
-    fut_df = pd.DataFrame({"ds": future_index, "sarimax_yhat": pred_mean.values})
+    hist_df = pd.DataFrame({"ds": ts.index, "heritage_blend_yhat": res.fittedvalues})
+    fut_df = pd.DataFrame({"ds": future_index, "heritage_blend_yhat": pred_mean.values})
     fut_df = pd.concat([fut_df.reset_index(drop=True), conf.reset_index(drop=True)], axis=1)
     out = pd.concat([hist_df, fut_df], ignore_index=True)
-    out["sarimax_yhat_lower"] = out.get("sarimax_yhat_lower", np.nan)
-    out["sarimax_yhat_upper"] = out.get("sarimax_yhat_upper", np.nan)
+    out["heritage_blend_yhat_lower"] = out.get("heritage_blend_yhat_lower", np.nan)
+    out["heritage_blend_yhat_upper"] = out.get("heritage_blend_yhat_upper", np.nan)
     return out
 
 def make_lag_features(y: pd.Series, lags=(1, 2, 3, 4, 5, 6, 7, 12, 26, 52), roll_windows=(4, 12)) -> pd.DataFrame:
@@ -316,15 +317,15 @@ def run_xgboost(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
         feats = feats.assign(**add_date_features(pd.DatetimeIndex([ds])).iloc[0].to_dict())
         pred = model.predict(feats)[0]
         rows.append({
-            "ds": ds, "xgb_yhat": pred,
-            "xgb_yhat_lower": pred - PI_Z_90 * resid_std,
-            "xgb_yhat_upper": pred + PI_Z_90 * resid_std,
+            "ds": ds, "west_coast_ipa_yhat": pred,
+            "west_coast_ipa_yhat_lower": pred - PI_Z_90 * resid_std,
+            "west_coast_ipa_yhat_upper": pred + PI_Z_90 * resid_std,
         })
         full_y.loc[ds] = pred
     hist_pred = model.predict(X)
-    hist_df = pd.DataFrame({"ds": X.index, "xgb_yhat": hist_pred})
-    hist_df["xgb_yhat_lower"] = np.nan
-    hist_df["xgb_yhat_upper"] = np.nan
+    hist_df = pd.DataFrame({"ds": X.index, "west_coast_ipa_yhat": hist_pred})
+    hist_df["west_coast_ipa_yhat_lower"] = np.nan
+    hist_df["west_coast_ipa_yhat_upper"] = np.nan
     fut_df = pd.DataFrame(rows)
     return pd.concat([hist_df, fut_df], ignore_index=True)
 
@@ -348,31 +349,31 @@ def run_catboost(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
         feats = feats.assign(**add_date_features(pd.DatetimeIndex([ds])).iloc[0].to_dict())
         pred = model.predict(feats)[0]
         rows.append({
-            "ds": ds, "catboost_yhat": pred,
-            "catboost_yhat_lower": pred - PI_Z_90 * resid_std,
-            "catboost_yhat_upper": pred + PI_Z_90 * resid_std,
+            "ds": ds, "creamy_nitro_yhat": pred,
+            "creamy_nitro_yhat_lower": pred - PI_Z_90 * resid_std,
+            "creamy_nitro_yhat_upper": pred + PI_Z_90 * resid_std,
         })
         full_y.loc[ds] = pred
     hist_pred = model.predict(X)
-    hist_df = pd.DataFrame({"ds": X.index, "catboost_yhat": hist_pred})
-    hist_df["catboost_yhat_lower"] = np.nan
-    hist_df["catboost_yhat_upper"] = np.nan
+    hist_df = pd.DataFrame({"ds": X.index, "creamy_nitro_yhat": hist_pred})
+    hist_df["creamy_nitro_yhat_lower"] = np.nan
+    hist_df["creamy_nitro_yhat_upper"] = np.nan
     fut_df = pd.DataFrame(rows)
     return pd.concat([hist_df, fut_df], ignore_index=True)
 
 def run_holtwinters(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
     ts = df_sku.set_index("ds")["y"].asfreq(WEEK_FREQ)
     model = ExponentialSmoothing(ts, trend="add", seasonal="add", seasonal_periods=52).fit(optimized=True)
-    hist_df = pd.DataFrame({"ds": ts.index, "holt_yhat": model.fittedvalues})
-    hist_df["holt_yhat_lower"] = np.nan
-    hist_df["holt_yhat_upper"] = np.nan
+    hist_df = pd.DataFrame({"ds": ts.index, "small_batch_classic_yhat": model.fittedvalues})
+    hist_df["small_batch_classic_yhat_lower"] = np.nan
+    hist_df["small_batch_classic_yhat_upper"] = np.nan
     future_index = pd.date_range(start=ts.index.max() + pd.Timedelta(weeks=1), periods=horizon_weeks, freq=WEEK_FREQ)
     forecast = model.forecast(horizon_weeks)
     resid_std = np.std(model.resid)
     fut_df = pd.DataFrame({
-        "ds": future_index, "holt_yhat": forecast.values,
-        "holt_yhat_lower": forecast.values - PI_Z_90 * resid_std,
-        "holt_yhat_upper": forecast.values + PI_Z_90 * resid_std,
+        "ds": future_index, "small_batch_classic_yhat": forecast.values,
+        "small_batch_classic_yhat_lower": forecast.values - PI_Z_90 * resid_std,
+        "small_batch_classic_yhat_upper": forecast.values + PI_Z_90 * resid_std,
     })
     return pd.concat([hist_df, fut_df], ignore_index=True)
 
@@ -399,15 +400,15 @@ def run_lightgbm(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
         feats = feats.assign(**add_date_features(pd.DatetimeIndex([ds])).iloc[0].to_dict())
         pred = model.predict(feats)[0]
         rows.append({
-            "ds": ds, "lgbm_yhat": pred,
-            "lgbm_yhat_lower": pred - PI_Z_90 * resid_std,
-            "lgbm_yhat_upper": pred + PI_Z_90 * resid_std,
+            "ds": ds, "light_hazy_yhat": pred,
+            "light_hazy_yhat_lower": pred - PI_Z_90 * resid_std,
+            "light_hazy_yhat_upper": pred + PI_Z_90 * resid_std,
         })
         full_y.loc[ds] = pred
     hist_pred = model.predict(X)
-    hist_df = pd.DataFrame({"ds": X.index, "lgbm_yhat": hist_pred})
-    hist_df["lgbm_yhat_lower"] = np.nan
-    hist_df["lgbm_yhat_upper"] = np.nan
+    hist_df = pd.DataFrame({"ds": X.index, "light_hazy_yhat": hist_pred})
+    hist_df["light_hazy_yhat_lower"] = np.nan
+    hist_df["light_hazy_yhat_upper"] = np.nan
     fut_df = pd.DataFrame(rows)
     return pd.concat([hist_df, fut_df], ignore_index=True)
 
@@ -419,7 +420,7 @@ def run_nbeats(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
     min_in = 8
     in_len = min(desired_in, max(min_in, n - out_len - 1))
     if n < in_len + out_len + 1:
-        return pd.DataFrame(columns=["ds", "nbeats_yhat", "nbeats_yhat_lower", "nbeats_yhat_upper"])
+        return pd.DataFrame(columns=["ds", "legacy_grand_reserve_yhat", "legacy_grand_reserve_yhat_lower", "legacy_grand_reserve_yhat_upper"])
     can_val = n >= (in_len + out_len + 20)
     val_series = None
     early_cb = None
@@ -450,9 +451,9 @@ def run_nbeats(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
         except Exception:
             pass
     forecast = model.predict(out_len)
-    df_pred = forecast.pd_dataframe().reset_index().rename(columns={"index": "ds", "y": "nbeats_yhat"})
-    df_pred["nbeats_yhat_lower"] = np.nan
-    df_pred["nbeats_yhat_upper"] = np.nan
+    df_pred = forecast.pd_dataframe().reset_index().rename(columns={"index": "ds", "y": "legacy_grand_reserve_yhat"})
+    df_pred["legacy_grand_reserve_yhat_lower"] = np.nan
+    df_pred["legacy_grand_reserve_yhat_upper"] = np.nan
     hist_frames = []
     try:
         if n >= in_len + out_len + 5:
@@ -460,9 +461,9 @@ def run_nbeats(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
                 model.historical_forecasts(series, start=0.8, forecast_horizon=1, verbose=False)
                 .pd_dataframe().reset_index()
             )
-            hist.rename(columns={"index": "ds", "y": "nbeats_yhat"}, inplace=True)
-            hist["nbeats_yhat_lower"] = np.nan
-            hist["nbeats_yhat_upper"] = np.nan
+            hist.rename(columns={"index": "ds", "y": "legacy_grand_reserve_yhat"}, inplace=True)
+            hist["legacy_grand_reserve_yhat_lower"] = np.nan
+            hist["legacy_grand_reserve_yhat_upper"] = np.nan
             hist_frames.append(hist)
     except Exception:
         pass

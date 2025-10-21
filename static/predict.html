@@ -324,7 +324,7 @@
                     <div class="preset-card">
                         <img src="https://i.imgur.com/CzS9b4r.png" alt="Beer" class="preset-img">
                         <span class="preset-name">Lagers</span>
-                        <span class="preset-desc">Crisp, Straightforward, Reliable, Everyday Choice (Prophet, SARIMAX, Holt-Winters)</span>
+                        <span class="preset-desc">Crisp, Straightforward, Reliable, Everyday Choice (House Lager, Heritage Blend, Small Batch Classic)</span>
                     </div>
                 </label>
                 
@@ -333,7 +333,7 @@
                     <div class="preset-card">
                         <img src="https://i.imgur.com/e7WLRuv.png" alt="Beer" class="preset-img">
                         <span class="preset-name">Ales</span>
-                        <span class="preset-desc">More Character & Depth, Still Approachable (Prophet, Holt-Winters, XGBoost)</span>
+                        <span class="preset-desc">More Character & Depth, Still Approachable Taste (House Lager, Small Batch Classic, West Coast IPA)</span>
                     </div>
                 </label>
                 
@@ -342,7 +342,7 @@
                     <div class="preset-card">
                         <img src="https://i.imgur.com/Gn7Nn9f.png" alt="Beer" class="preset-img">
                         <span class="preset-name">IPAs</span>
-                        <span class="preset-desc">Bold, Complex Flavor Profile (Prophet, SARIMAX, XGBoost, NeuralProphet)</span>
+                        <span class="preset-desc">Bold, Complex Flavor Profile (House Lager, Heritage Blend, West Coast IPA, Mind Melt Double IPA)</span>
                     </div>
                 </label>
                 
@@ -351,7 +351,7 @@
                     <div class="preset-card">
                         <img src="https://i.imgur.com/nyJUlki.png" alt="Beer" class="preset-img">
                         <span class="preset-name">Stouts</span>
-                        <span class="preset-desc">Big, Robust, Full Featured (every available model)</span>
+                        <span class="preset-desc">Deepest Flavors, Robust, Full Featured (every available model)</span>
                     </div>
                 </label>
             </div>
@@ -366,50 +366,50 @@
             <div id="alacarteModels" class="models" style="display: none;">
                 <div class="model-card">
                     <h3>📈 Statistical</h3>
-                    <label><input type="checkbox" id="runProphet" checked> Prophet</label>
+                    <label><input type="checkbox" id="runProphet" checked> House Lager</label>
                     <p style="font-size: 12px; color: #666; margin: 5px 0 15px 28px; font-style: italic;">
-                        An industry-standard forecasting algorithm developed by Meta that automatically identifies seasonality, holidays, and trend changes while remaining robust to missing data and outliers.
+                        A reliable, time-tested forecasting model that delivers consistent results across diverse scenarios.
                     </p>
                     
-                    <label><input type="checkbox" id="runSarimax" checked> SARIMAX</label>
+                    <label><input type="checkbox" id="runSarimax" checked> Heritage Blend</label>
                     <p style="font-size: 12px; color: #666; margin: 5px 0 15px 28px; font-style: italic;">
-                        A proven statistical model that captures seasonal patterns and incorporates external variables to improve forecast accuracy for time-dependent data.
+                        A traditional approach that captures seasonal patterns and long-term trends with proven accuracy.
                     </p>
                     
-                    <label><input type="checkbox" id="runHolt" checked> Holt-Winters</label>
+                    <label><input type="checkbox" id="runHolt" checked> Small Batch Classic</label>
                     <p style="font-size: 12px; color: #666; margin: 5px 0 15px 28px; font-style: italic;">
-                        A classical exponential smoothing technique that decomposes time series into level, trend, and seasonal components for reliable short-to-medium term forecasts.
+                        A refined smoothing technique that balances trend and seasonality for dependable short-term forecasts.
                     </p>
                 </div>
                 
                 <div class="model-card">
                     <h3>🤖 Machine Learning</h3>
-                    <label><input type="checkbox" id="runXgb"> XGBoost</label>
+                    <label><input type="checkbox" id="runXgb"> West Coast IPA</label>
                     <p style="font-size: 12px; color: #666; margin: 5px 0 15px 28px; font-style: italic;">
-                        An award-winning gradient boosting framework that leverages ensemble learning to deliver highly accurate predictions across diverse forecasting scenarios.
+                        A bold, high-performance model that delivers punchy accuracy across complex forecasting scenarios.
                     </p>
                     
-                    <label><input type="checkbox" id="runCatboost"> CatBoost</label>
+                    <label><input type="checkbox" id="runCatboost"> Creamy Nitro</label>
                     <p style="font-size: 12px; color: #666; margin: 5px 0 15px 28px; font-style: italic;">
-                        An advanced gradient boosting algorithm optimized for categorical features that delivers superior performance with minimal hyperparameter tuning.
+                        A smooth, optimized algorithm that handles diverse data types with minimal tuning required.
                     </p>
                     
-                    <label><input type="checkbox" id="runLgbm"> LightGBM</label>
+                    <label><input type="checkbox" id="runLgbm"> Light Hazy</label>
                     <p style="font-size: 12px; color: #666; margin: 5px 0 15px 28px; font-style: italic;">
-                        A high-performance gradient boosting framework engineered for speed and efficiency with large datasets.
+                        A fast, efficient model engineered for speed without sacrificing accuracy on large datasets.
                     </p>
                 </div>
                 
                 <div class="model-card">
                     <h3>🧬 Deep Learning</h3>
-                    <label><input type="checkbox" id="runNeural"> NeuralProphet</label>
+                    <label><input type="checkbox" id="runNeural"> Mind Melt Double IPA</label>
                     <p style="font-size: 12px; color: #666; margin: 5px 0 15px 28px; font-style: italic;">
-                        A hybrid architecture combining traditional time series decomposition with neural network capabilities to capture complex non-linear patterns and feature interactions.
+                        A powerful hybrid model that captures complex patterns and feature interactions with neural precision.
                     </p>
                     
-                    <label><input type="checkbox" id="runNbeats"> N-BEATS</label>
+                    <label><input type="checkbox" id="runNbeats"> Legacy Grand Reserve</label>
                     <p style="font-size: 12px; color: #666; margin: 5px 0 15px 28px; font-style: italic;">
-                        A state-of-the-art deep learning architecture specifically designed for time series forecasting that automatically learns interpretable trend and seasonality components.
+                        A premium deep learning model that automatically learns interpretable patterns for sophisticated forecasts.
                     </p>
                 </div>
             </div>
