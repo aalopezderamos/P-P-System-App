@@ -533,14 +533,14 @@ async def root():
                 text-stroke: 3px #000;
                 paint-order: stroke fill;
                 margin: 0;
-                font-size: 20px;
+                font-size: 26px;
             }
             
             .container {
                 max-width: 1000px;
-                margin: 50px auto;
+                margin: 0px auto;
                 text-align: center;
-                padding: 20px;
+                padding: 15px 20px;
             }
             
             .app-cards {
@@ -560,8 +560,8 @@ async def root():
             }
             
             .app-card:hover {
-                transform: translateY(-5px);
-                box-shadow: 0 10px 30px rgba(235, 187, 64, 0.3);
+                transform: translateY(-15px) scale(1.05);
+                box-shadow: 0 25px 80px rgba(235, 187, 64, 0.7);
             }
             
             .app-card h2 {
@@ -602,7 +602,7 @@ async def root():
             .subtitle {
                 color: #EBBB40;
                 font-size: 24px;
-                margin: 30px 0 10px 0;
+                margin: 10px 0 10px 0;
             }
             
             .description {
@@ -622,7 +622,7 @@ async def root():
             </video>
             <div class="header-content">
                 <img src="https://i.imgur.com/Bf1hNE0.png" alt="Predict & Pour Logo" width="150" style="margin-bottom: 10px;">
-                <h1>Predict & Pour System</h1>
+                <h1>Predict & Pour Forecasting System</h1>
                 <p>Professional Forecasting & Execution Platform</p>
             </div>
         </div>

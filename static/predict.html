@@ -49,6 +49,7 @@
             text-stroke: 3px #000;
             paint-order: stroke fill;
             margin: 0;
+            font-size: 22px;
         }
         .preset-section {
             background: url('https://static.vecteezy.com/system/resources/previews/027/815/346/large_2x/dark-wood-background-texture-rustic-wooden-floor-textured-backdrop-free-photo.jpg') center center;
@@ -98,6 +99,7 @@
             font-size: 14px;
             flex-grow: 1;
             line-height: 1.4;
+            text-align: center;
         }
         .preset-option input[type="radio"]:checked + .preset-card {
             border-color: #EBBB40;
@@ -106,7 +108,8 @@
         }
         .preset-card:hover {
             border-color: #EBBB40;
-            transform: translateY(-2px);
+            transform: translateY(-7px) scale(1.05);
+            box-shadow: 0 25px 80px rgba(235, 187, 64, 0.7);
         }
         .alacarte-section {
             margin: 20px 0;
@@ -137,8 +140,8 @@
         }
         .container { 
             max-width: 1200px; 
-            margin: 20px auto; 
-            padding: 20px; 
+            margin: 0px auto; 
+            padding: 15px 20px; 
         }
         .upload-section { 
             border: 2px dashed #EBBB40; 
@@ -277,6 +280,16 @@
         .alert-success { background: #d4edda; color: #155724; }
         .alert-error { background: #f8d7da; color: #721c24; }
         .alert-info { background: #d1ecf1; color: #0c5460; }
+        .nav-link {
+            display: inline-block;
+            color: #EBBB40;
+            text-decoration: none;
+            margin: 10px 5px;
+            transition: color 0.3s;
+        }
+        .nav-link:hover {
+            color: #fff;
+        }        
     </style>
 </head>
 <body>
@@ -287,13 +300,25 @@
         <div class="header-content">
             <img src="https://i.imgur.com/Bf1hNE0.png" alt="Predict & Pour Logo" width="100" style="margin-right: 15px;">
             <div>
-                <h1>Predict & Pour Forecast App</h1>
+                <h1>Predict & Pour - Forecasting App</h1>
                 <p>Multi-Model Forecasting System</p>
             </div>
         </div>
     </div>
 
     <div class="container">
+        <!-- NAVIGATION -->
+        <div style="margin: 10px 0; padding: 2px 0; border-bottom: 1px solid #333;">
+            <a href="/" class="nav-link">
+                <img src="https://i.imgur.com/Bf1hNE0.png" alt="Home" style="height: 20px; vertical-align: middle; margin-right: 5px;">
+                Back to Home
+            </a> | 
+            <a href="/pour" class="nav-link">
+                <img src="https://i.imgur.com/cNL5gwd.png" alt="Pour" style="height: 20px; vertical-align: middle; margin-right: 5px;">
+                Go to Pour
+            </a>
+        </div>
+
         <div class="upload-section">
             <h2>📤 Upload CSV File</h2>
             <input type="file" id="fileInput" accept=".csv" style="display:none">
@@ -303,18 +328,18 @@
 
         <div class="controls">
             <div class="control-group">
-                <label>Forecast Horizon (weeks): <span id="horizonValue">12</span></label>
-                <input type="range" id="horizonWeeks" min="4" max="52" value="12" 
+                <label>Forecast Horizon (weeks): <span id="horizonValue">13</span></label>
+                <input type="range" id="horizonWeeks" min="4" max="52" value="13" 
                        oninput="document.getElementById('horizonValue').textContent=this.value">
             </div>
             <div class="control-group">
-                <label>Minimum Rows per SKU: <span id="minValue">50</span></label>
+                <label>Minimum Rows (Weeks) per SKU: <span id="minValue">50</span></label>
                 <input type="range" id="minPoints" min="20" max="300" value="50" step="5"
                        oninput="document.getElementById('minValue').textContent=this.value">
             </div>
         </div>
 
-        <h2 style="color: #EBBB40;">Models Menu</h3>
+        <h2 style="color: #EBBB40;">Taproom Menu</h3>
         
         <!-- MODEL PRESETS -->
         <div class="preset-section">
@@ -324,7 +349,7 @@
                     <div class="preset-card">
                         <img src="https://i.imgur.com/CzS9b4r.png" alt="Beer" class="preset-img">
                         <span class="preset-name">Lagers</span>
-                        <span class="preset-desc">Crisp, Straightforward, Reliable, Everyday Choice (House Lager, Heritage Blend, Small Batch Classic)</span>
+                        <span class="preset-desc">Straightforward, Reliable, Everyday Choice<br><span style="font-style: italic; font-size: 12px;">(House Lager, Heritage Blend, Small Batch Classic)</span></span>
                     </div>
                 </label>
                 
@@ -333,7 +358,7 @@
                     <div class="preset-card">
                         <img src="https://i.imgur.com/e7WLRuv.png" alt="Beer" class="preset-img">
                         <span class="preset-name">Ales</span>
-                        <span class="preset-desc">More Character & Depth, Still Approachable Taste (House Lager, Small Batch Classic, West Coast IPA)</span>
+                        <span class="preset-desc">More Character & Depth, Still Approachable<br><span style="font-style: italic; font-size: 12px;">(House Lager, Small Batch Classic, West Coast IPA)</span></span>
                     </div>
                 </label>
                 
@@ -342,7 +367,7 @@
                     <div class="preset-card">
                         <img src="https://i.imgur.com/Gn7Nn9f.png" alt="Beer" class="preset-img">
                         <span class="preset-name">IPAs</span>
-                        <span class="preset-desc">Bold, Complex Flavor Profile (House Lager, Heritage Blend, West Coast IPA, Mind Melt Double IPA)</span>
+                        <span class="preset-desc">Bold, Complex Flavor Profile<br><span style="font-style: italic; font-size: 12px;">(House Lager, Heritage Blend, West Coast IPA, Mind Melt Double IPA)</span></span>
                     </div>
                 </label>
                 
@@ -351,7 +376,7 @@
                     <div class="preset-card">
                         <img src="https://i.imgur.com/nyJUlki.png" alt="Beer" class="preset-img">
                         <span class="preset-name">Stouts</span>
-                        <span class="preset-desc">Deepest Flavors, Robust, Full Featured (every available model)</span>
+                        <span class="preset-desc">Deepest Flavors, Robust, Full Featured<br><span style="font-style: italic; font-size: 12px;">(every available forecasting model)</span></span>
                     </div>
                 </label>
             </div>
@@ -360,7 +385,7 @@
         <!-- À LA CARTE SECTION (COLLAPSIBLE) -->
         <div class="alacarte-section">
             <button type="button" class="alacarte-toggle" onclick="toggleAlaCarte()">
-                <span id="toggleIcon">▶</span> Custom Model Selection (À La Carte)
+                <span id="toggleIcon">▶</span> Custom Model Selection (À La Carte Forecasting)
             </button>
             
             <div id="alacarteModels" class="models" style="display: none;">
