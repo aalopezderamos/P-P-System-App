@@ -1,0 +1,14 @@
+.ds_store
+.log
+*.log
+*.tmp
+.env
+.env.local
+.venv/
+venv/
+__pycache__/
+lightning_logs/
+catboost_info/
+__pycache__
+working files/
+index_files/

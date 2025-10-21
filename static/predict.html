@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Predict & Pour Forecast App</title>
+    <style>
+        body { 
+            margin: 0; 
+            font-family: Arial, sans-serif; 
+            background: #000; 
+        }
+        .header { 
+            position: relative;
+            overflow: hidden;
+            color: #EBBB40; 
+            padding: 20px; 
+            text-align: center; 
+            border-bottom: 3px solid #EBBB40;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 150px;
+        }
+        .header-video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 0;
+        }
+        .header-content {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .header h1 {
+            -webkit-text-stroke: 5px #000;
+            text-stroke: 5px #000;
+            paint-order: stroke fill;
+            margin: 0;
+        }
+        .header p {
+            -webkit-text-stroke: 3px #000;
+            text-stroke: 3px #000;
+            paint-order: stroke fill;
+            margin: 0;
+        }
+        .preset-section {
+            background: url('https://static.vecteezy.com/system/resources/previews/027/815/346/large_2x/dark-wood-background-texture-rustic-wooden-floor-textured-backdrop-free-photo.jpg') center center;
+            background-size: cover;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border: 2px solid #EBBB40;
+        }
+        .preset-options {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+        .preset-option {
+            cursor: pointer;
+            display: block;
+        }
+        .preset-option input[type="radio"] {
+            display: none;
+        }
+        .preset-card {
+            background: white;
+            border: 3px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .preset-img {
+            width: 100px;
+            height: 80px;
+            flex-shrink: 0;
+            object-fit: contain;
+        }
+        .preset-name {
+            font-weight: bold;
+            color: #333;
+            font-size: 25px;
+            flex-shrink: 0;
+            min-width: 100px;
+        }
+        .preset-desc {
+            color: #666;
+            font-size: 14px;
+            flex-grow: 1;
+            line-height: 1.4;
+        }
+        .preset-option input[type="radio"]:checked + .preset-card {
+            border-color: #EBBB40;
+            background: #fffef5;
+            box-shadow: 0 0 10px rgba(235, 187, 64, 0.3);
+        }
+        .preset-card:hover {
+            border-color: #EBBB40;
+            transform: translateY(-2px);
+        }
+        .alacarte-section {
+            margin: 20px 0;
+        }
+        .alacarte-toggle {
+            width: 100%;
+            background: #f0f0f0;
+            border: 2px solid #EBBB40;
+            padding: 15px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 8px;
+            text-align: left;
+            color: #333;
+        }
+        .alacarte-toggle:hover {
+            background: #EBBB40;
+            color: #000;
+        }
+        #toggleIcon {
+            display: inline-block;
+            transition: transform 0.3s;
+            margin-right: 10px;
+        }
+        #toggleIcon.open {
+            transform: rotate(90deg);
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 20px auto; 
+            padding: 20px; 
+        }
+        .upload-section { 
+            border: 2px dashed #EBBB40; 
+            padding: 4px; 
+            text-align: center; 
+            margin: 8px 0; 
+            border-radius: 8px;
+            color: #fff;
+        }
+        .upload-section h2 {
+            color: #EBBB40;
+        }
+        #fileName {
+            color: #ddd !important;
+        }
+        button { 
+            background: #EBBB40; 
+            color: #000; 
+            padding: 15px 30px; 
+            border: none; 
+            border-radius: 5px; 
+            font-size: 16px; 
+            cursor: pointer; 
+            font-weight: bold; 
+        }
+        button:hover { background: #d4a634; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .controls { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 20px; 
+            margin: 20px 0; 
+        }
+        .control-group { 
+            padding: 15px; 
+            background: url('https://static.vecteezy.com/system/resources/previews/027/815/346/large_2x/dark-wood-background-texture-rustic-wooden-floor-textured-backdrop-free-photo.jpg') center center;
+            background-size: cover;
+            border-radius: 5px;
+            border: 2px solid #EBBB40;
+        }
+        .control-group label {
+            color: #fff;
+            font-weight: bold;
+        }
+        .control-group span {
+            color: #EBBB40;
+        }
+        .models { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr 1fr; 
+            gap: 20px; 
+            margin: 30px 0; 
+        }
+        .model-card { 
+            background: url('https://static.vecteezy.com/system/resources/previews/027/815/346/large_2x/dark-wood-background-texture-rustic-wooden-floor-textured-backdrop-free-photo.jpg') center center;
+            background-size: cover;
+            padding: 20px; 
+            border-radius: 8px; 
+            border: 2px solid #EBBB40;
+            color: #fff;
+        }
+        .model-card h3 {
+            color: #EBBB40;
+            margin-top: 0;
+        }
+        .model-card label {
+            color: #fff;
+        }
+        .model-card p {
+            color: #ddd !important;
+        }
+        label { display: block; margin: 10px 0; cursor: pointer; }
+        input[type="checkbox"] { margin-right: 8px; }
+        input[type="range"] { width: 100%; }
+        .status { 
+            background: #f0f0f0; 
+            padding: 20px; 
+            margin: 20px 0; 
+            border-radius: 5px; 
+            display: none; 
+        }
+        .progress-container {
+            margin: 15px 0;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #2a2a2a;
+            border-radius: 15px;
+            overflow: hidden;
+            border: 2px solid #EBBB40;
+            position: relative;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #EBBB40, #d4a634);
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 15px;
+        }
+        .progress-text {
+            text-align: center;
+            color: #EBBB40;
+            font-weight: bold;
+            font-size: 16px;
+            margin-top: 8px;
+        }
+        .timer-section {
+            text-align: center;
+            color: #fff;
+            margin: 15px 0;
+            font-size: 18px;
+        }
+        .timer-section strong {
+            color: #EBBB40;
+            font-size: 22px;
+        }
+        .stop-btn {
+            background: #cc0000;
+            color: white;
+            width: 100%;
+            margin-top: 15px;
+            padding: 12px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        .stop-btn:hover {
+            background: #990000;
+        }
+        .status.active { display: block; }
+        .alert { 
+            padding: 15px; 
+            margin: 15px 0; 
+            border-radius: 5px; 
+        }
+        .alert-success { background: #d4edda; color: #155724; }
+        .alert-error { background: #f8d7da; color: #721c24; }
+        .alert-info { background: #d1ecf1; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <video autoplay muted loop playsinline class="header-video">
+            <source src="https://i.imgur.com/ity2XJw.mp4" type="video/mp4">
+        </video>
+        <div class="header-content">
+            <img src="https://i.imgur.com/Bf1hNE0.png" alt="Predict & Pour Logo" width="100" style="margin-right: 15px;">
+            <div>
+                <h1>Predict & Pour Forecast App</h1>
+                <p>Multi-Model Forecasting System</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="upload-section">
+            <h2>📤 Upload CSV File</h2>
+            <input type="file" id="fileInput" accept=".csv" style="display:none">
+            <button onclick="document.getElementById('fileInput').click()">Choose File</button>
+            <p id="fileName" style="margin-top: 10px; color: #666;">No file selected</p>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>Forecast Horizon (weeks): <span id="horizonValue">12</span></label>
+                <input type="range" id="horizonWeeks" min="4" max="52" value="12" 
+                       oninput="document.getElementById('horizonValue').textContent=this.value">
+            </div>
+            <div class="control-group">
+                <label>Minimum Rows per SKU: <span id="minValue">50</span></label>
+                <input type="range" id="minPoints" min="20" max="300" value="50" step="5"
+                       oninput="document.getElementById('minValue').textContent=this.value">
+            </div>
+        </div>
+
+        <h2 style="color: #EBBB40;">Models Menu</h3>
+        
+        <!-- MODEL PRESETS -->
+        <div class="preset-section">
+            <div class="preset-options">
+                <label class="preset-option">
+                    <input type="radio" name="preset" value="quick" checked>
+                    <div class="preset-card">
+                        <img src="https://i.imgur.com/CzS9b4r.png" alt="Beer" class="preset-img">
+                        <span class="preset-name">Lagers</span>
+                        <span class="preset-desc">Crisp, Straightforward, Reliable, Everyday Choice (Prophet, SARIMAX, Holt-Winters)</span>
+                    </div>
+                </label>
+                
+                <label class="preset-option">
+                    <input type="radio" name="preset" value="solid">
+                    <div class="preset-card">
+                        <img src="https://i.imgur.com/e7WLRuv.png" alt="Beer" class="preset-img">
+                        <span class="preset-name">Ales</span>
+                        <span class="preset-desc">More Character & Depth, Still Approachable (Prophet, Holt-Winters, XGBoost)</span>
+                    </div>
+                </label>
+                
+                <label class="preset-option">
+                    <input type="radio" name="preset" value="larger">
+                    <div class="preset-card">
+                        <img src="https://i.imgur.com/Gn7Nn9f.png" alt="Beer" class="preset-img">
+                        <span class="preset-name">IPAs</span>
+                        <span class="preset-desc">Bold, Complex Flavor Profile (Prophet, SARIMAX, XGBoost, NeuralProphet)</span>
+                    </div>
+                </label>
+                
+                <label class="preset-option">
+                    <input type="radio" name="preset" value="all">
+                    <div class="preset-card">
+                        <img src="https://i.imgur.com/nyJUlki.png" alt="Beer" class="preset-img">
+                        <span class="preset-name">Stouts</span>
+                        <span class="preset-desc">Big, Robust, Full Featured (every available model)</span>
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        <!-- À LA CARTE SECTION (COLLAPSIBLE) -->
+        <div class="alacarte-section">
+            <button type="button" class="alacarte-toggle" onclick="toggleAlaCarte()">
+                <span id="toggleIcon">▶</span> Custom Model Selection (À La Carte)
+            </button>
+            
+            <div id="alacarteModels" class="models" style="display: none;">
+                <div class="model-card">
+                    <h3>📈 Statistical</h3>
+                    <label><input type="checkbox" id="runProphet" checked> Prophet</label>
+                    <p style="font-size: 12px; color: #666; margin: 5px 0 15px 28px; font-style: italic;">
+                        An industry-standard forecasting algorithm developed by Meta that automatically identifies seasonality, holidays, and trend changes while remaining robust to missing data and outliers.
+                    </p>
+                    
+                    <label><input type="checkbox" id="runSarimax" checked> SARIMAX</label>
+                    <p style="font-size: 12px; color: #666; margin: 5px 0 15px 28px; font-style: italic;">
+                        A proven statistical model that captures seasonal patterns and incorporates external variables to improve forecast accuracy for time-dependent data.
+                    </p>
+                    
+                    <label><input type="checkbox" id="runHolt" checked> Holt-Winters</label>
+                    <p style="font-size: 12px; color: #666; margin: 5px 0 15px 28px; font-style: italic;">
+                        A classical exponential smoothing technique that decomposes time series into level, trend, and seasonal components for reliable short-to-medium term forecasts.
+                    </p>
+                </div>
+                
+                <div class="model-card">
+                    <h3>🤖 Machine Learning</h3>
+                    <label><input type="checkbox" id="runXgb"> XGBoost</label>
+                    <p style="font-size: 12px; color: #666; margin: 5px 0 15px 28px; font-style: italic;">
+                        An award-winning gradient boosting framework that leverages ensemble learning to deliver highly accurate predictions across diverse forecasting scenarios.
+                    </p>
+                    
+                    <label><input type="checkbox" id="runCatboost"> CatBoost</label>
+                    <p style="font-size: 12px; color: #666; margin: 5px 0 15px 28px; font-style: italic;">
+                        An advanced gradient boosting algorithm optimized for categorical features that delivers superior performance with minimal hyperparameter tuning.
+                    </p>
+                    
+                    <label><input type="checkbox" id="runLgbm"> LightGBM</label>
+                    <p style="font-size: 12px; color: #666; margin: 5px 0 15px 28px; font-style: italic;">
+                        A high-performance gradient boosting framework engineered for speed and efficiency with large datasets.
+                    </p>
+                </div>
+                
+                <div class="model-card">
+                    <h3>🧬 Deep Learning</h3>
+                    <label><input type="checkbox" id="runNeural"> NeuralProphet</label>
+                    <p style="font-size: 12px; color: #666; margin: 5px 0 15px 28px; font-style: italic;">
+                        A hybrid architecture combining traditional time series decomposition with neural network capabilities to capture complex non-linear patterns and feature interactions.
+                    </p>
+                    
+                    <label><input type="checkbox" id="runNbeats"> N-BEATS</label>
+                    <p style="font-size: 12px; color: #666; margin: 5px 0 15px 28px; font-style: italic;">
+                        A state-of-the-art deep learning architecture specifically designed for time series forecasting that automatically learns interpretable trend and seasonality components.
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div style="text-align: center; margin: 30px 0;">
+            <button id="startBtn" disabled onclick="startForecast()">🚀 Start Forecasting</button>
+        </div>
+
+        <div id="status" class="status">
+            <h3>Processing Forecast...</h3>
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressBar"></div>
+                </div>
+                <div class="progress-text" id="progressText">0%</div>
+            </div>
+            <p id="statusMsg">Initializing...</p>
+            <div class="timer-section">
+                <span>⏱️ Elapsed Time: <strong id="elapsedTime">00:00</strong></span>
+            </div>
+            <button class="stop-btn" id="stopBtn" onclick="stopForecast()">🛑 Stop Forecasting</button>
+        </div>
+
+        <div id="alerts"></div>
+    </div>
+
+    <script>
+        let selectedFile = null;
+        // Model preset configurations
+        const presets = {
+            quick: {
+                runProphet: true,
+                runSarimax: true,
+                runHolt: true,
+                runXgb: false,
+                runCatboost: false,
+                runLgbm: false,
+                runNeural: false,
+                runNbeats: false
+            },
+            solid: {
+                runProphet: true,
+                runSarimax: false,
+                runHolt: true,
+                runXgb: true,
+                runCatboost: false,
+                runLgbm: false,
+                runNeural: false,
+                runNbeats: false
+            },
+            larger: {
+                runProphet: true,
+                runSarimax: true,
+                runHolt: false,
+                runXgb: true,
+                runCatboost: false,
+                runLgbm: false,
+                runNeural: true,
+                runNbeats: false
+            },
+            all: {
+                runProphet: true,
+                runSarimax: true,
+                runHolt: true,
+                runXgb: true,
+                runCatboost: true,
+                runLgbm: true,
+                runNeural: true,
+                runNbeats: true
+            }
+        };
+
+        // Apply preset selection
+        function applyPreset(presetName) {
+            const preset = presets[presetName];
+            for (let model in preset) {
+                const checkbox = document.getElementById(model);
+                if (checkbox) {
+                    checkbox.checked = preset[model];
+                }
+            }
+        }
+
+        // Toggle à la carte section
+        function toggleAlaCarte() {
+            const section = document.getElementById('alacarteModels');
+            const icon = document.getElementById('toggleIcon');
+            if (section.style.display === 'none') {
+                section.style.display = 'grid';
+                icon.classList.add('open');
+            } else {
+                section.style.display = 'none';
+                icon.classList.remove('open');
+            }
+        }
+
+        // Listen for preset changes
+        document.addEventListener('DOMContentLoaded', function() {
+            // Apply default preset
+            applyPreset('quick');
+            
+            // Add listeners to radio buttons
+            const radioButtons = document.querySelectorAll('input[name="preset"]');
+            radioButtons.forEach(radio => {
+                radio.addEventListener('change', function() {
+                    applyPreset(this.value);
+                });
+            });
+        });        
+        document.getElementById('fileInput').onchange = function(e) {
+            selectedFile = e.target.files[0];
+            if (selectedFile) {
+                document.getElementById('fileName').textContent = 'Selected: ' + selectedFile.name;
+                document.getElementById('startBtn').disabled = false;
+                showAlert('File uploaded! Click Start when ready.', 'info');
+            }
+        };
+
+        let abortController = null;
+        let timerInterval = null;
+        let startTime = null;
+
+        async function startForecast() {
+            if (!selectedFile) return;
+
+            // Initialize
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('status').classList.add('active');
+            document.getElementById('alerts').innerHTML = '';
+            
+            // Reset progress and timer
+            updateProgress(0);
+            startTimer();
+            
+            // Create abort controller
+            abortController = new AbortController();
+
+            const config = {
+                horizon_weeks: parseInt(document.getElementById('horizonWeeks').value),
+                min_points: parseInt(document.getElementById('minPoints').value),
+                show_debug: false,
+                run_prophet: document.getElementById('runProphet').checked,
+                run_neural: document.getElementById('runNeural').checked,
+                run_sarimax: document.getElementById('runSarimax').checked,
+                run_xgb: document.getElementById('runXgb').checked,
+                run_catboost: document.getElementById('runCatboost').checked,
+                run_holt: document.getElementById('runHolt').checked,
+                run_lgbm: document.getElementById('runLgbm').checked,
+                run_nbeats: document.getElementById('runNbeats').checked
+            };
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('config', JSON.stringify(config));
+
+            try {
+                document.getElementById('statusMsg').textContent = 'Processing forecast... this may take several minutes.';
+                
+                // Simulate progress (since we don't get real-time updates from backend)
+                simulateProgress();
+                
+                const response = await fetch('http://localhost:8000/forecast', {
+                    method: 'POST',
+                    body: formData,
+                    signal: abortController.signal
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Forecast failed');
+                }
+
+                // Complete progress
+                updateProgress(100);
+                stopTimer();
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'NEST_Forecasts_MultiModel.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+
+                showAlert('✅ Success! File downloaded.', 'success');
+                document.getElementById('status').classList.remove('active');
+
+            } catch (error) {
+                stopTimer();
+                if (error.name === 'AbortError') {
+                    showAlert('🛑 Forecast stopped by user.', 'info');
+                } else {
+                    console.error('Error:', error);
+                    showAlert('❌ Error: ' + error.message, 'error');
+                }
+                document.getElementById('status').classList.remove('active');
+            } finally {
+                document.getElementById('startBtn').disabled = false;
+                abortController = null;
+            }
+        }
+
+        function stopForecast() {
+            if (abortController) {
+                abortController.abort();
+                stopTimer();
+                updateProgress(0);
+                document.getElementById('statusMsg').textContent = 'Stopping...';
+            }
+        }
+
+        function updateProgress(percent) {
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            progressBar.style.width = percent + '%';
+            progressText.textContent = Math.round(percent) + '%';
+        }
+
+        function simulateProgress() {
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                if (progress < 90) {
+                    progress += Math.random() * 3;
+                    updateProgress(Math.min(progress, 90));
+                }
+                if (!abortController) {
+                    clearInterval(progressInterval);
+                }
+            }, 500);
+        }
+
+        function startTimer() {
+            startTime = Date.now();
+            timerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                const minutes = Math.floor(elapsed / 60);
+                const seconds = elapsed % 60;
+                document.getElementById('elapsedTime').textContent = 
+                    String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+            }, 1000);
+        }
+
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }
+
+        function showAlert(msg, type) {
+            const div = document.createElement('div');
+            div.className = 'alert alert-' + type;
+            div.textContent = msg;
+            document.getElementById('alerts').appendChild(div);
+            if (type === 'info') setTimeout(() => div.remove(), 5000);
+        }
+
+        // Check API on load
+        fetch('http://localhost:8000/')
+            .then(r => r.json())
+            .then(d => showAlert('✓ Connected to API', 'info'))
+            .catch(e => showAlert('⚠️ Cannot connect to API. Start the server first!', 'error'));
+    </script>
+</body>
+</html>
