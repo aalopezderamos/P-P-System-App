@@ -8,7 +8,20 @@
         body { 
             margin: 0; 
             font-family: Arial, sans-serif; 
-            background: #000; 
+            background: #000;
+            position: relative;
+        }
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: url('https://i.imgur.com/cdzKb9r.png') repeat;
+            opacity: 0.18;
+            z-index: -1;
+            pointer-events: none;
         }
         .header { 
             position: relative;
@@ -348,7 +361,7 @@
                     <input type="radio" name="preset" value="quick" checked>
                     <div class="preset-card">
                         <img src="https://i.imgur.com/CzS9b4r.png" alt="Beer" class="preset-img">
-                        <span class="preset-name">Lagers</span>
+                        <span class="preset-name">"Lagers"</span>
                         <span class="preset-desc">Straightforward, Reliable, Everyday Choice<br><span style="font-style: italic; font-size: 12px;">(House Lager, Heritage Blend, Small Batch Classic)</span></span>
                     </div>
                 </label>
@@ -357,7 +370,7 @@
                     <input type="radio" name="preset" value="solid">
                     <div class="preset-card">
                         <img src="https://i.imgur.com/e7WLRuv.png" alt="Beer" class="preset-img">
-                        <span class="preset-name">Ales</span>
+                        <span class="preset-name">"Ales"</span>
                         <span class="preset-desc">More Character & Depth, Still Approachable<br><span style="font-style: italic; font-size: 12px;">(House Lager, Small Batch Classic, West Coast IPA)</span></span>
                     </div>
                 </label>
@@ -366,7 +379,7 @@
                     <input type="radio" name="preset" value="larger">
                     <div class="preset-card">
                         <img src="https://i.imgur.com/Gn7Nn9f.png" alt="Beer" class="preset-img">
-                        <span class="preset-name">IPAs</span>
+                        <span class="preset-name">"IPAs"</span>
                         <span class="preset-desc">Bold, Complex Flavor Profile<br><span style="font-style: italic; font-size: 12px;">(House Lager, Heritage Blend, West Coast IPA, Mind Melt Double IPA)</span></span>
                     </div>
                 </label>
@@ -375,7 +388,7 @@
                     <input type="radio" name="preset" value="all">
                     <div class="preset-card">
                         <img src="https://i.imgur.com/nyJUlki.png" alt="Beer" class="preset-img">
-                        <span class="preset-name">Stouts</span>
+                        <span class="preset-name">"Stouts"</span>
                         <span class="preset-desc">Deepest Flavors, Robust, Full Featured<br><span style="font-style: italic; font-size: 12px;">(every available forecasting model)</span></span>
                     </div>
                 </label>
@@ -596,7 +609,7 @@
                 // Simulate progress (since we don't get real-time updates from backend)
                 simulateProgress();
                 
-                const response = await fetch('http://localhost:8000/forecast', {
+                const response = await fetch('http://localhost:8000/api/forecast', {
                     method: 'POST',
                     body: formData,
                     signal: abortController.signal

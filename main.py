@@ -9,7 +9,7 @@ import time
 import numpy as np
 import pandas as pd
 import xlsxwriter
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Form
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -413,18 +413,39 @@ def run_lightgbm(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
     return pd.concat([hist_df, fut_df], ignore_index=True)
 
 def run_nbeats(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
-    series = TimeSeries.from_dataframe(df_sku[["ds", "y"]], "ds", "y", freq=WEEK_FREQ)
+    # Drop any NaN values in y column first
+    df_clean = df_sku[["ds", "y"]].dropna(subset=["y"]).copy()
+    
+    if len(df_clean) < 50:  # Need minimum data
+        return pd.DataFrame(columns=["ds", "legacy_grand_reserve_yhat", "legacy_grand_reserve_yhat_lower", "legacy_grand_reserve_yhat_upper"])
+    
+    try:
+        series = TimeSeries.from_dataframe(df_clean, "ds", "y", freq=WEEK_FREQ, fill_missing_dates=True)
+    except Exception as e:
+        print(f"N-BEATS TimeSeries creation failed: {e}")
+        return pd.DataFrame(columns=["ds", "legacy_grand_reserve_yhat", "legacy_grand_reserve_yhat_lower", "legacy_grand_reserve_yhat_upper"])
+
     n = len(series)
-    desired_in = 26
+    
+    # More conservative parameters for shorter series
+    if n < 60:
+        # Too short for N-BEATS to work reliably
+        return pd.DataFrame(columns=["ds", "legacy_grand_reserve_yhat", "legacy_grand_reserve_yhat_lower", "legacy_grand_reserve_yhat_upper"])
+    
+    desired_in = min(26, n // 3)  # Adaptive input length
     out_len = max(1, int(horizon_weeks))
     min_in = 8
-    in_len = min(desired_in, max(min_in, n - out_len - 1))
-    if n < in_len + out_len + 1:
+    in_len = min(desired_in, max(min_in, n - out_len - 10))  # Leave more buffer
+
+    if n < in_len + out_len + 10:  # Need more buffer
         return pd.DataFrame(columns=["ds", "legacy_grand_reserve_yhat", "legacy_grand_reserve_yhat_lower", "legacy_grand_reserve_yhat_upper"])
-    can_val = n >= (in_len + out_len + 20)
+
+    # Decide whether we can afford a validation split
+    can_val = n >= (in_len + out_len + 25)  # More conservative
     val_series = None
     early_cb = None
     pl_kwargs = {"enable_checkpointing": False, "logger": False}
+
     if can_val:
         _, val_series = series.split_before(0.70)
         early_cb = EarlyStopping(monitor="val_loss", patience=5, mode="min")
@@ -432,43 +453,55 @@ def run_nbeats(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
     else:
         early_cb = EarlyStopping(monitor="train_loss", patience=5, mode="min")
         pl_kwargs["callbacks"] = [early_cb]
-    bs = max(4, min(64, n // 4))
+
+    bs = max(4, min(32, n // 6))  # Smaller batch size
+
     model = NBEATSModel(
-        input_chunk_length=in_len, output_chunk_length=out_len,
-        n_epochs=50, batch_size=bs, random_state=42, pl_trainer_kwargs=pl_kwargs,
+        input_chunk_length=in_len,
+        output_chunk_length=out_len,
+        n_epochs=30,  # Reduced epochs for speed
+        batch_size=bs,
+        random_state=42,
+        pl_trainer_kwargs=pl_kwargs,
     )
+
     try:
         import torch
         prev_threads = torch.get_num_threads()
         torch.set_num_threads(1)
     except Exception:
         prev_threads = None
-    model.fit(series, verbose=False, val_series=val_series)
+
+    try:
+        model.fit(series, verbose=False, val_series=val_series)
+    except Exception as e:
+        print(f"N-BEATS fit failed: {e}")
+        if prev_threads is not None:
+            try:
+                import torch
+                torch.set_num_threads(prev_threads)
+            except Exception:
+                pass
+        return pd.DataFrame(columns=["ds", "legacy_grand_reserve_yhat", "legacy_grand_reserve_yhat_lower", "legacy_grand_reserve_yhat_upper"])
+
     if prev_threads is not None:
         try:
             import torch
             torch.set_num_threads(prev_threads)
         except Exception:
             pass
-    forecast = model.predict(out_len)
-    df_pred = forecast.pd_dataframe().reset_index().rename(columns={"index": "ds", "y": "legacy_grand_reserve_yhat"})
-    df_pred["legacy_grand_reserve_yhat_lower"] = np.nan
-    df_pred["legacy_grand_reserve_yhat_upper"] = np.nan
-    hist_frames = []
+
+    # Predict future
     try:
-        if n >= in_len + out_len + 5:
-            hist = (
-                model.historical_forecasts(series, start=0.8, forecast_horizon=1, verbose=False)
-                .pd_dataframe().reset_index()
-            )
-            hist.rename(columns={"index": "ds", "y": "legacy_grand_reserve_yhat"}, inplace=True)
-            hist["legacy_grand_reserve_yhat_lower"] = np.nan
-            hist["legacy_grand_reserve_yhat_upper"] = np.nan
-            hist_frames.append(hist)
-    except Exception:
-        pass
-    if hist_frames:
-        return pd.concat([hist_frames[0], df_pred], ignore_index=True)
+        forecast = model.predict(out_len)
+        df_pred = forecast.pd_dataframe().reset_index().rename(columns={"index": "ds", "y": "legacy_grand_reserve_yhat"})
+        df_pred["legacy_grand_reserve_yhat_lower"] = np.nan
+        df_pred["legacy_grand_reserve_yhat_upper"] = np.nan
+    except Exception as e:
+        print(f"N-BEATS predict failed: {e}")
+        return pd.DataFrame(columns=["ds", "legacy_grand_reserve_yhat", "legacy_grand_reserve_yhat_lower", "legacy_grand_reserve_yhat_upper"])
+
+    # Skip historical forecasts for simplicity/reliability
     return df_pred
 
 # =====================================================================
@@ -489,6 +522,19 @@ async def root():
                 font-family: Arial, sans-serif; 
                 background: #000;
                 color: #fff;
+                position: relative;
+            }
+            body::before {
+                content: '';
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: url('https://i.imgur.com/cdzKb9r.png') repeat;
+                opacity: 0.18;
+                z-index: -1;
+                pointer-events: none;
             }
             
             /* VIDEO HEADER - MATCHES YOUR APPS */
@@ -631,7 +677,7 @@ async def root():
             <h2 class="subtitle">Choose Your Tool</h2>
             <p class="description">
                 A complete forecasting solution: Generate multi-model AI predictions with Predict, 
-                then automate execution with Pour. The perfect one-two punch for data-driven decisions.
+                then automate execution with Pour. The perfect one-two punch for data-driven forecasting.
             </p>
             
             <div class="app-cards">
@@ -669,11 +715,372 @@ async def serve_pour():
 # =====================================================================
 
 @app.post("/api/forecast")
-async def create_forecast(file: UploadFile = File(...), config: str = None):
-    """Forecast endpoint - SAME AS YOUR EXISTING CODE"""
-    # [PASTE YOUR ENTIRE EXISTING FORECAST LOGIC HERE]
-    # This is the same code from your original main.py /forecast endpoint
-    pass  # Replace with your full forecast code
+async def create_forecast(file: UploadFile = File(...), config: str = Form(None)):
+    """
+    Multi-model forecast endpoint
+    Processes CSV upload and returns Excel with forecasts
+    """
+    try:
+        # Parse configuration
+        if config:
+            try:
+                config_dict = json.loads(config)
+                print(f"DEBUG: Received config: {config_dict}")  # Debug log
+            except json.JSONDecodeError as e:
+                print(f"ERROR: Failed to parse config JSON: {e}")
+                config_dict = {}
+        else:
+            print("WARNING: No config received, using defaults")
+            config_dict = {}
+        
+        horizon_weeks = config_dict.get("horizon_weeks", 12)
+        min_points = config_dict.get("min_points", 50)
+        show_debug = config_dict.get("show_debug", False)
+        
+        # Get model flags - NO DEFAULTS (False if not specified)
+        run_prophet_flag = config_dict.get("run_prophet", False)
+        run_neural_flag = config_dict.get("run_neural", False)
+        run_sarimax_flag = config_dict.get("run_sarimax", False)
+        run_xgb_flag = config_dict.get("run_xgb", False)
+        run_catboost_flag = config_dict.get("run_catboost", False)
+        run_holt_flag = config_dict.get("run_holt", False)
+        run_lgbm_flag = config_dict.get("run_lgbm", False)
+        run_nbeats_flag = config_dict.get("run_nbeats", False)
+        
+        print(f"DEBUG: Model flags - Prophet:{run_prophet_flag}, Sarimax:{run_sarimax_flag}, Holt:{run_holt_flag}, XGB:{run_xgb_flag}")
+
+        # Read uploaded file
+        contents = await file.read()
+        df = pd.read_csv(BytesIO(contents))
+        
+        # Validate required columns
+        required_cols = {"sku_id", "ds", "y"}
+        if not required_cols.issubset(df.columns):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing required columns: {required_cols - set(df.columns)}"
+            )
+
+        # Process data
+        df["ds"] = pd.to_datetime(df["ds"])
+        holidays_df = get_custom_holidays()
+        holidays_df["ds"] = pd.to_datetime(holidays_df["ds"])
+
+        sku_list = df["sku_id"].unique()
+        total = len(sku_list)
+
+        detailed_rows = []
+
+        for idx, (sku, df_sku) in enumerate(df.groupby("sku_id"), start=1):
+            print(f"Processing {idx}/{total} → {sku}")  # Console logging
+
+            if len(df_sku) < min_points:
+                continue
+
+            try:
+                base = pd.DataFrame({"ds": df_sku["ds"].unique()}).sort_values("ds")
+                base = base.merge(df_sku[["ds", "y"]], on="ds", how="left")
+
+                model_futures = {}
+                with ThreadPoolExecutor(max_workers=6) as executor:
+                    if run_prophet_flag:
+                        model_futures["house_lager"] = executor.submit(
+                            run_prophet, df_sku, holidays_df, horizon_weeks
+                        )
+                    if run_neural_flag:
+                        model_futures["mind_melt_double_ipa"] = executor.submit(
+                            run_neuralprophet, df_sku, holidays_df, horizon_weeks
+                        )
+                    if run_sarimax_flag:
+                        model_futures["heritage_blend"] = executor.submit(
+                            run_sarimax, df_sku, horizon_weeks
+                        )
+                    if run_xgb_flag:
+                        model_futures["west_coast_ipa"] = executor.submit(
+                            run_xgboost, df_sku, horizon_weeks
+                        )
+                    if run_catboost_flag:
+                        model_futures["creamy_nitro"] = executor.submit(
+                            run_catboost, df_sku, horizon_weeks
+                        )
+                    if run_holt_flag:
+                        model_futures["small_batch_classic"] = executor.submit(
+                            run_holtwinters, df_sku, horizon_weeks
+                        )
+                    if run_lgbm_flag:
+                        model_futures["light_hazy"] = executor.submit(
+                            run_lightgbm, df_sku, horizon_weeks
+                        )
+                    if run_nbeats_flag:
+                        model_futures["legacy_grand_reserve"] = executor.submit(
+                            run_nbeats, df_sku, horizon_weeks
+                        )
+
+                # Merge model outputs
+                for model_name, future in model_futures.items():
+                    try:
+                        result_df = future.result()
+                        base = base.merge(result_df, on="ds", how="outer", validate="one_to_one")
+                    except Exception as e:
+                        print(f"Warning: {model_name} failed for {sku}: {e}")
+
+                # Compute model-specific accuracy
+                for model_prefix in [
+                    "house_lager", "mind_melt_double_ipa", "heritage_blend", 
+                    "west_coast_ipa", "creamy_nitro", "small_batch_classic", 
+                    "light_hazy", "legacy_grand_reserve"
+                ]:
+                    pred_col = f"{model_prefix}_yhat"
+                    if pred_col in base.columns:
+                        base[f"{model_prefix}_acc"] = base.apply(
+                            lambda r: safe_accuracy(r.get("y"), r.get(pred_col)), axis=1
+                        )
+
+                base["sku_id"] = sku
+                detailed_rows.append(base)
+
+            except Exception as e:
+                print(f"Warning: Error processing {sku}: {e}")
+                continue
+
+        if not detailed_rows:
+            raise HTTPException(
+                status_code=400,
+                detail="No forecasts were generated. Check your file or adjust filters."
+            )
+
+        df_out = pd.concat(detailed_rows, ignore_index=True).sort_values(["sku_id", "ds"])
+
+        # ======================== Excel Export ========================
+        output = BytesIO()
+        with pd.ExcelWriter(
+            output, engine="xlsxwriter", date_format="mm/dd/yyyy", datetime_format="mm/dd/yyyy"
+        ) as writer:
+            df_out.to_excel(writer, index=False, sheet_name="forecasts")
+            workbook = writer.book
+            worksheet = writer.sheets["forecasts"]
+            n_rows, n_cols = df_out.shape
+
+            # Formats
+            date_fmt = workbook.add_format({"num_format": "mm/dd/yyyy"})
+            int_fmt = workbook.add_format({"num_format": "0"})
+            pct_fmt = workbook.add_format({"num_format": "0.00%"})
+            wrap_center = {"bold": True, "text_wrap": True, "align": "center", "valign": "vcenter"}
+            hdr1 = workbook.add_format({**wrap_center, "bg_color": "#E6B8B7"})
+            hdr2 = workbook.add_format({**wrap_center, "bg_color": "#CCC0DA"})
+            hdr3 = workbook.add_format({**wrap_center, "bg_color": "#8DB4E2"})
+            hdr4 = workbook.add_format({**wrap_center, "bg_color": "#FCD5B4"})
+            hdr5 = workbook.add_format({**wrap_center, "bg_color": "#C6EFCE"})
+            hdr6 = workbook.add_format({**wrap_center, "bg_color": "#FFFF00"})
+            hdr7 = workbook.add_format({**wrap_center, "bg_color": "#B4C6E7"})
+            hdr8 = workbook.add_format({**wrap_center, "bg_color": "#D9EAD3"})
+            hdr9 = workbook.add_format({**wrap_center, "bg_color": "#F4CCCC"})
+            hdr10 = workbook.add_format({**wrap_center, "bg_color": "#FFF2CC"})
+            hdr_extra = workbook.add_format({**wrap_center, "bg_color": "#C4BD97"})
+
+            # Extra columns with formulas
+            extra_headers = [
+                ("Increase", "=X{row}*0.93"),
+                (
+                    "AB Past Forecast",
+                    "=XLOOKUP(AF{row}, '[Master Incoming Report NEW.xlsm]AB Forecast Accy-Bias'!$B:$B, "
+                    "'[Master Incoming Report NEW.xlsm]AB Forecast Accy-Bias'!$M:$M, \"\")",
+                ),
+                (
+                    "Past Forecast",
+                    "=XLOOKUP(AF{row}, '[Master Incoming Report NEW.xlsm]AB Forecast Accy-Bias'!$B:$B, "
+                    "'[Master Incoming Report NEW.xlsm]AB Forecast Accy-Bias'!$AF:$AF, \"\")",
+                ),
+                (
+                    "AB Current Forecast",
+                    "=XLOOKUP(AF{row}, '[Master Incoming Report NEW.xlsm]AB Forecast Report'!$A:$A, "
+                    "'[Master Incoming Report NEW.xlsm]AB Forecast Report'!$P:$P, \"\")",
+                ),
+                (
+                    "Current Forecast",
+                    "=XLOOKUP(AF{row}, '[Master Incoming Report NEW.xlsm]AB Forecast Report'!$A:$A, "
+                    "'[Master Incoming Report NEW.xlsm]AB Forecast Report'!$T:$T, \"\")",
+                ),
+                (
+                    "LY Sales",
+                    "=XLOOKUP(AF{row}, '[Master Incoming Report NEW.xlsm]AB Forecast Report'!$A:$A, "
+                    "'[Master Incoming Report NEW.xlsm]AB Forecast Report'!$S:$S, \"\")",
+                ),
+                ("Helper", "=W{row}&A{row}"),
+                (
+                    "Week Number",
+                    '=IF(A{row} < (TODAY() - WEEKDAY(TODAY(), 2) + 1), "Past Date", '
+                    'IF(A{row} <= (TODAY() - WEEKDAY(TODAY(), 2) + 6), 0, '
+                    'IF(INT((A{row} - (TODAY() - WEEKDAY(TODAY(), 2) + 1)) / 7) <= 12, '
+                    'INT((A{row} - (TODAY() - WEEKDAY(TODAY(), 2) + 1)) / 7), "Past Date")))'
+                ),
+                (
+                    "PDCN",
+                    "=XLOOKUP(W{row}, '[Master Incoming Report NEW.xlsm]Overview'!$D:$D, "
+                    "'[Master Incoming Report NEW.xlsm]Overview'!$E:$E, \"\")",
+                ),
+                (
+                    "Supplier",
+                    "=XLOOKUP(W{row}, '[Master Incoming Report NEW.xlsm]Overview'!$D:$D, "
+                    "'[Master Incoming Report NEW.xlsm]Overview'!$B:$B, \"\")",
+                ),
+                (
+                    "Description",
+                    "=XLOOKUP(W{row}, '[Master Incoming Report NEW.xlsm]Overview'!$D:$D, "
+                    "'[Master Incoming Report NEW.xlsm]Overview'!$C:$C, \"\")",
+                ),
+            ]
+            numeric_headers = {
+                "Increase",
+                "AB Past Forecast",
+                "Past Forecast",
+                "AB Current Forecast",
+                "Current Forecast",
+                "LY Sales",
+            }
+
+            # Freeze panes and set column widths
+            worksheet.freeze_panes(1, 0)
+            num_total_cols = n_cols + 2 + len(extra_headers)
+            for col in range(num_total_cols):
+                px = 75
+                width = (px - 5) / 7
+                worksheet.set_column(col, col, width)
+
+            # Format existing columns with beer names
+            col_idx = {name: i for i, name in enumerate(df_out.columns)}
+            group_map = {
+                hdr1: ["ds", "y", "sku_id"],
+                hdr2: [
+                    "house_lager_yhat",
+                    "house_lager_yhat_lower",
+                    "house_lager_yhat_upper",
+                    "trend",
+                    "weekly",
+                    "yearly",
+                    "holidays",
+                    "house_lager_acc",
+                ],
+                hdr3: [
+                    "mind_melt_double_ipa_yhat",
+                    "mind_melt_double_ipa_yhat_lower",
+                    "mind_melt_double_ipa_yhat_upper",
+                    "mind_melt_double_ipa_acc"
+                ],
+                hdr4: [
+                    "heritage_blend_yhat",
+                    "heritage_blend_yhat_lower",
+                    "heritage_blend_yhat_upper",
+                    "heritage_blend_acc"
+                ],
+                hdr5: [
+                    "west_coast_ipa_yhat",
+                    "west_coast_ipa_yhat_lower",
+                    "west_coast_ipa_yhat_upper",
+                    "west_coast_ipa_acc"
+                ],
+                hdr7: [
+                    "creamy_nitro_yhat",
+                    "creamy_nitro_yhat_lower",
+                    "creamy_nitro_yhat_upper",
+                    "creamy_nitro_acc"
+                ],
+                hdr8: [
+                    "small_batch_classic_yhat",
+                    "small_batch_classic_yhat_lower",
+                    "small_batch_classic_yhat_upper",
+                    "small_batch_classic_acc"
+                ],
+                hdr9: [
+                    "light_hazy_yhat",
+                    "light_hazy_yhat_lower",
+                    "light_hazy_yhat_upper",
+                    "light_hazy_acc"
+                ],
+                hdr10: [
+                    "legacy_grand_reserve_yhat",
+                    "legacy_grand_reserve_yhat_lower",
+                    "legacy_grand_reserve_yhat_upper",
+                    "legacy_grand_reserve_acc"
+                ],
+            }
+            
+            for fmt, names in group_map.items():
+                for name in names:
+                    if name not in col_idx:
+                        continue
+                    c = col_idx[name]
+                    worksheet.write(0, c, name, fmt)
+                    if name == "ds":
+                        worksheet.set_column(c, c, 11, date_fmt)
+                    elif name.endswith("_acc"):
+                        worksheet.set_column(c, c, 11, pct_fmt)
+                    else:
+                        worksheet.set_column(c, c, 11, int_fmt)
+
+            # Column Grouping (collapsible sections)
+            worksheet.set_column('D:I', None, None, {'level': 1, 'hidden': True})   # House Lager
+            worksheet.set_column('K:L', None, None, {'level': 1, 'hidden': True})   # Mind Melt Double IPA
+            worksheet.set_column('N:O', None, None, {'level': 1, 'hidden': True})   # Heritage Blend
+            worksheet.set_column('Q:R', None, None, {'level': 1, 'hidden': True})   # West Coast IPA
+            worksheet.set_column('T:U', None, None, {'level': 1, 'hidden': True})   # Creamy Nitro
+            worksheet.set_column('W:X', None, None, {'level': 1, 'hidden': True})   # Small Batch Classic
+            worksheet.set_column('Z:AA', None, None, {'level': 1, 'hidden': True})  # Light Hazy
+            worksheet.set_column('AC:AD', None, None, {'level': 1, 'hidden': True}) # Legacy Grand Reserve
+            worksheet.set_column('AE:AL', None, None, {'level': 1, 'hidden': True}) # Accuracy block
+            worksheet.set_column('AP:AZ', None, None, {'level': 1, 'hidden': True}) # MIR Block
+
+            # Show outline symbols
+            worksheet.outline_settings(True, True, True, False)
+
+            # Final Forecast columns + formulas
+            col_final = n_cols
+            col_accy = n_cols + 1
+            worksheet.write(0, col_final, "Final Forecast", hdr6)
+            worksheet.write(0, col_accy, "Final Accy %", hdr6)
+
+            for row in range(1, n_rows + 1):
+                # Final Forecast: Average of top 5 closest to mean
+                base_f1 = (
+                    "LET("
+                    "vals, HSTACK(C{r},J{r},M{r},P{r},S{r},V{r},Y{r},AB{r}),"
+                    "arr, TOCOL(CHOOSE({{1,2,3,4,5,6,7,8}}, "
+                    "C{r},J{r},M{r},P{r},S{r},V{r},Y{r},AB{r})),"
+                    "mu, AVERAGE(arr),"
+                    "AVERAGE(TAKE(SORTBY(arr, ABS(arr-mu), 1), 5))"
+                    ")"
+                ).format(r=row + 1)
+                worksheet.write_formula(row, col_final, f"=IFERROR({base_f1}, \"\")", int_fmt)
+
+                # Final Accuracy
+                base_f2 = (
+                    "IF(ABS(X{r}-$B{r})/$B{r}>1,"
+                    "ABS(X{r}-$B{r})/$B{r}-1,"
+                    "1-ABS(X{r}-$B{r})/$B{r})"
+                ).format(r=row + 1)
+                worksheet.write_formula(row, col_accy, f"=IFERROR({base_f2}, \"\")", pct_fmt)
+
+            # Extra columns: headers + formulas
+            for idx, (header, formula) in enumerate(extra_headers, start=n_cols + 2):
+                worksheet.write(0, idx, header, hdr_extra)
+                if header in numeric_headers:
+                    worksheet.set_column(idx, idx, None, int_fmt)
+                for row in range(1, n_rows + 1):
+                    fmt = int_fmt if header in numeric_headers else None
+                    worksheet.write_formula(row, idx, formula.format(row=row + 1), fmt)
+
+        # Return Excel file
+        output.seek(0)
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=NEST_Forecasts_MultiModel.xlsx"}
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Forecast processing failed: {str(e)}")
 
 # =====================================================================
 # POUR APP ROUTES (New automation endpoints)
