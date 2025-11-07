@@ -175,7 +175,79 @@ def build_future_saturdays(last_date: pd.Timestamp, horizon_weeks: int) -> pd.Da
     return pd.date_range(start=first_sat, periods=horizon_weeks, freq=WEEK_FREQ)
 
 # =====================================================================
-# Model Functions (ALL UNCHANGED from Streamlit version)
+# NEW: Dynamic Formula Builder Helper Functions
+# =====================================================================
+
+def _col_number_to_letter(n: int) -> str:
+    """Convert 0-indexed column number to Excel column letter (A, B, ..., Z, AA, AB, ...)"""
+    result = ""
+    while n >= 0:
+        result = chr(n % 26 + 65) + result
+        n = n // 26 - 1
+    return result
+
+
+def get_model_column_letter(df_out: pd.DataFrame, model_col_name: str) -> Optional[str]:
+    """
+    Get Excel column letter for a given DataFrame column name.
+    Returns None if column doesn't exist.
+    """
+    if model_col_name not in df_out.columns:
+        return None
+    
+    col_idx = df_out.columns.get_loc(model_col_name)
+    return _col_number_to_letter(col_idx)
+
+
+def build_dynamic_final_forecast_formula(row_num: int, model_col_refs: List[str], ab_current_col_ref: str = None) -> str:
+    """
+    Build a dynamic Final Forecast formula that:
+    1. Includes all model columns + AB Current Forecast
+    2. Filters out blanks and zeros
+    3. Drops bottom 25% (rounded) of values based on distance from mean
+    4. Returns average of remaining values
+    
+    Args:
+        row_num: Excel row number (1-indexed)
+        model_col_refs: List of Excel column references (e.g., ['C2', 'J2', 'M2'])
+        ab_current_col_ref: Column reference for AB Current Forecast (e.g., 'AC2')
+    
+    Returns:
+        Excel formula string
+    """
+    # Combine all value sources
+    all_refs = model_col_refs.copy()
+    if ab_current_col_ref:
+        all_refs.append(ab_current_col_ref)
+    
+    if not all_refs:
+        return ""
+    
+    # Build index array for CHOOSE function
+    num_refs = len(all_refs)
+    indices = ",".join([str(i+1) for i in range(num_refs)])
+    
+    # Build cell references for CHOOSE function
+    refs_string = ",".join(all_refs)
+    
+    # Build the formula - avoid f-string issues by building piece by piece
+    formula = (
+        "LET("
+        "all_vals, TOCOL(CHOOSE({" + indices + "}," + refs_string + ")),"
+        "valid_vals, FILTER(all_vals, (all_vals<>\"\")*(all_vals<>0)),"
+        "n_vals, COUNTA(valid_vals),"
+        "mean_val, AVERAGE(valid_vals),"
+        "n_drop, ROUND(n_vals*0.25, 0),"
+        "n_keep, n_vals - n_drop,"
+        "sorted_vals, SORTBY(valid_vals, ABS(valid_vals - mean_val), 1),"
+        "kept_vals, IF(n_keep > 0, TAKE(sorted_vals, n_keep), valid_vals),"
+        "AVERAGE(kept_vals)"
+        ")"
+    )
+    
+    return f"=IFERROR({formula}, \"\")"
+# =====================================================================
+# Model Functions
 # =====================================================================
 
 def run_prophet(df_sku: pd.DataFrame, holidays_df: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
@@ -747,6 +819,18 @@ async def create_forecast(file: UploadFile = File(...), config: str = Form(None)
         run_lgbm_flag = config_dict.get("run_lgbm", False)
         run_nbeats_flag = config_dict.get("run_nbeats", False)
         
+        # DEBUG: Print what models were requested
+        print("\n===== MODEL SELECTION DEBUG =====")
+        print(f"Prophet (House Lager): {run_prophet_flag}")
+        print(f"NeuralProphet (Mind Melt): {run_neural_flag}")
+        print(f"SARIMAX (Heritage Blend): {run_sarimax_flag}")
+        print(f"XGBoost (West Coast IPA): {run_xgb_flag}")
+        print(f"CatBoost (Creamy Nitro): {run_catboost_flag}")
+        print(f"Holt-Winters (Small Batch): {run_holt_flag}")
+        print(f"LightGBM (Light Hazy): {run_lgbm_flag}")
+        print(f"N-BEATS (Legacy Grand Reserve): {run_nbeats_flag}")
+        print("="*40 + "\n")
+        
         print(f"DEBUG: Model flags - Prophet:{run_prophet_flag}, Sarimax:{run_sarimax_flag}, Holt:{run_holt_flag}, XGB:{run_xgb_flag}")
 
         # Read uploaded file
@@ -947,6 +1031,66 @@ async def create_forecast(file: UploadFile = File(...), config: str = Form(None)
                 width = (px - 5) / 7
                 worksheet.set_column(col, col, width)
 
+            # ========== FRIENDLY COLUMN NAMES MAPPING ==========
+            friendly_names = {
+                # Base columns
+                "ds": "Date",
+                "y": "Actual Sales",
+                "sku_id": "SKU ID",
+                
+                # House Lager (Prophet)
+                "house_lager_yhat": "House Lager Forecast",
+                "house_lager_yhat_lower": "House Lager Lower",
+                "house_lager_yhat_upper": "House Lager Upper",
+                "house_lager_acc": "House Lager Accy",
+                "trend": "Trend",
+                "weekly": "Weekly",
+                "yearly": "Yearly",
+                "holidays": "Holidays",
+                
+                # Mind Melt Double IPA (NeuralProphet)
+                "mind_melt_double_ipa_yhat": "Mind Melt IPA Forecast",
+                "mind_melt_double_ipa_yhat_lower": "Mind Melt IPA Lower",
+                "mind_melt_double_ipa_yhat_upper": "Mind Melt IPA Upper",
+                "mind_melt_double_ipa_acc": "Mind Melt IPA Accy",
+                
+                # Heritage Blend (SARIMAX)
+                "heritage_blend_yhat": "Heritage Blend Forecast",
+                "heritage_blend_yhat_lower": "Heritage Blend Lower",
+                "heritage_blend_yhat_upper": "Heritage Blend Upper",
+                "heritage_blend_acc": "Heritage Blend Accy",
+                
+                # West Coast IPA (XGBoost)
+                "west_coast_ipa_yhat": "West Coast IPA Forecast",
+                "west_coast_ipa_yhat_lower": "West Coast IPA Lower",
+                "west_coast_ipa_yhat_upper": "West Coast IPA Upper",
+                "west_coast_ipa_acc": "West Coast IPA Accy",
+                
+                # Creamy Nitro (CatBoost)
+                "creamy_nitro_yhat": "Creamy Nitro Forecast",
+                "creamy_nitro_yhat_lower": "Creamy Nitro Lower",
+                "creamy_nitro_yhat_upper": "Creamy Nitro Upper",
+                "creamy_nitro_acc": "Creamy Nitro Accy",
+                
+                # Small Batch Classic (Holt-Winters)
+                "small_batch_classic_yhat": "Small Batch Classic Forecast",
+                "small_batch_classic_yhat_lower": "Small Batch Classic Lower",
+                "small_batch_classic_yhat_upper": "Small Batch Classic Upper",
+                "small_batch_classic_acc": "Small Batch Classic Accy",
+                
+                # Light Hazy (LightGBM)
+                "light_hazy_yhat": "Light Hazy Forecast",
+                "light_hazy_yhat_lower": "Light Hazy Lower",
+                "light_hazy_yhat_upper": "Light Hazy Upper",
+                "light_hazy_acc": "Light Hazy Accy",
+                
+                # Legacy Grand Reserve (N-BEATS)
+                "legacy_grand_reserve_yhat": "Legacy Grand Reserve Forecast",
+                "legacy_grand_reserve_yhat_lower": "Legacy Grand Reserve Lower",
+                "legacy_grand_reserve_yhat_upper": "Legacy Grand Reserve Upper",
+                "legacy_grand_reserve_acc": "Legacy Grand Reserve Accy",
+            }
+
             # Format existing columns with beer names
             col_idx = {name: i for i, name in enumerate(df_out.columns)}
             group_map = {
@@ -1010,64 +1154,198 @@ async def create_forecast(file: UploadFile = File(...), config: str = Form(None)
                     if name not in col_idx:
                         continue
                     c = col_idx[name]
-                    worksheet.write(0, c, name, fmt)
+                    
+                    # Use friendly name if available, otherwise use original name
+                    display_name = friendly_names.get(name, name)
+                    
+                    worksheet.write(0, c, display_name, fmt)
                     if name == "ds":
-                        worksheet.set_column(c, c, 11, date_fmt)
+                        worksheet.set_column(c, c, 11, date_fmt)  # Wider for "Date"
                     elif name.endswith("_acc"):
-                        worksheet.set_column(c, c, 11, pct_fmt)
+                        worksheet.set_column(c, c, 11, pct_fmt)  # Wider for "Accuracy"
                     else:
-                        worksheet.set_column(c, c, 11, int_fmt)
+                        worksheet.set_column(c, c, 11, int_fmt)  # Wider for longer names
 
-            # Column Grouping (collapsible sections)
-            worksheet.set_column('D:I', None, None, {'level': 1, 'hidden': True})   # House Lager
-            worksheet.set_column('K:L', None, None, {'level': 1, 'hidden': True})   # Mind Melt Double IPA
-            worksheet.set_column('N:O', None, None, {'level': 1, 'hidden': True})   # Heritage Blend
-            worksheet.set_column('Q:R', None, None, {'level': 1, 'hidden': True})   # West Coast IPA
-            worksheet.set_column('T:U', None, None, {'level': 1, 'hidden': True})   # Creamy Nitro
-            worksheet.set_column('W:X', None, None, {'level': 1, 'hidden': True})   # Small Batch Classic
-            worksheet.set_column('Z:AA', None, None, {'level': 1, 'hidden': True})  # Light Hazy
-            worksheet.set_column('AC:AD', None, None, {'level': 1, 'hidden': True}) # Legacy Grand Reserve
-            worksheet.set_column('AE:AL', None, None, {'level': 1, 'hidden': True}) # Accuracy block
-            worksheet.set_column('AP:AZ', None, None, {'level': 1, 'hidden': True}) # MIR Block
+            # ========== DYNAMIC COLUMN GROUPING (collapsible sections) ==========
+            
+            # Define which columns to hide for each model (detail columns like lower/upper bounds, components)
+            model_detail_columns = {
+                "house_lager": [
+                    "house_lager_yhat_lower",
+                    "house_lager_yhat_upper", 
+                    "trend",
+                    "weekly",
+                    "yearly",
+                    "holidays"
+                ],
+                "mind_melt_double_ipa": [
+                    "mind_melt_double_ipa_yhat_lower",
+                    "mind_melt_double_ipa_yhat_upper"
+                ],
+                "heritage_blend": [
+                    "heritage_blend_yhat_lower",
+                    "heritage_blend_yhat_upper"
+                ],
+                "west_coast_ipa": [
+                    "west_coast_ipa_yhat_lower",
+                    "west_coast_ipa_yhat_upper"
+                ],
+                "creamy_nitro": [
+                    "creamy_nitro_yhat_lower",
+                    "creamy_nitro_yhat_upper"
+                ],
+                "small_batch_classic": [
+                    "small_batch_classic_yhat_lower",
+                    "small_batch_classic_yhat_upper"
+                ],
+                "light_hazy": [
+                    "light_hazy_yhat_lower",
+                    "light_hazy_yhat_upper"
+                ],
+                "legacy_grand_reserve": [
+                    "legacy_grand_reserve_yhat_lower",
+                    "legacy_grand_reserve_yhat_upper"
+                ]
+            }
+            
+            # Group detail columns for each model that's present
+            for model_name, detail_cols in model_detail_columns.items():
+                # Check if this model was run (check for main yhat column)
+                main_col = f"{model_name}_yhat"
+                if main_col not in df_out.columns:
+                    continue  # Skip this model, it wasn't run
+                
+                # Find the column indices for detail columns that exist
+                detail_indices = []
+                for detail_col in detail_cols:
+                    if detail_col in df_out.columns:
+                        detail_indices.append(df_out.columns.get_loc(detail_col))
+                
+                if not detail_indices:
+                    continue  # No detail columns to hide
+                
+                # Group consecutive columns together
+                detail_indices.sort()
+                start_col = min(detail_indices)
+                end_col = max(detail_indices)
+                
+                # Convert to Excel column letters
+                start_letter = _col_number_to_letter(start_col)
+                end_letter = _col_number_to_letter(end_col)
+                
+                # Create collapsible group
+                worksheet.set_column(f'{start_letter}:{end_letter}', None, None, {'level': 1, 'hidden': True})
+            
+            # Group all accuracy columns together (if they exist)
+            accuracy_cols = [col for col in df_out.columns if col.endswith('_acc')]
+            if accuracy_cols:
+                acc_indices = [df_out.columns.get_loc(col) for col in accuracy_cols]
+                acc_indices.sort()
+                start_letter = _col_number_to_letter(min(acc_indices))
+                end_letter = _col_number_to_letter(max(acc_indices))
+                worksheet.set_column(f'{start_letter}:{end_letter}', None, None, {'level': 1, 'hidden': True})
+            
+            # Group the extra columns (MIR block: Increase through Description)
+            # These start at n_cols + 2 and go to n_cols + 2 + len(extra_headers) - 1
+            # But we want to KEEP visible: Final Forecast, Final Accy, and the first few extra columns
+            # Let's hide from "Helper" column onward (which is typically column 7+ in extra_headers)
+            
+            # Find which extra columns to hide (everything after "LY Sales")
+            extra_col_start = n_cols + 2  # First extra column
+            columns_to_keep_visible = ["Increase", "AB Past Forecast", "Past Forecast", 
+                                       "AB Current Forecast", "Current Forecast", "LY Sales"]
+            
+            first_hidden_extra = None
+            for idx, (header, formula) in enumerate(extra_headers):
+                if header not in columns_to_keep_visible:
+                    first_hidden_extra = extra_col_start + idx
+                    break
+            
+            if first_hidden_extra is not None:
+                last_extra = extra_col_start + len(extra_headers) - 1
+                start_letter = _col_number_to_letter(first_hidden_extra)
+                end_letter = _col_number_to_letter(last_extra)
+                worksheet.set_column(f'{start_letter}:{end_letter}', None, None, {'level': 1, 'hidden': True})
 
             # Show outline symbols
             worksheet.outline_settings(True, True, True, False)
 
-            # Final Forecast columns + formulas
+            # ========== DYNAMIC FINAL FORECAST FORMULA SECTION ==========
+            
+            # Step 1: Detect which model columns are actually present
+            model_yhat_columns = [
+                "house_lager_yhat",
+                "mind_melt_double_ipa_yhat",
+                "heritage_blend_yhat",
+                "west_coast_ipa_yhat",
+                "creamy_nitro_yhat",
+                "small_batch_classic_yhat",
+                "light_hazy_yhat",
+                "legacy_grand_reserve_yhat"
+            ]
+            
+            present_model_cols = [col for col in model_yhat_columns if col in df_out.columns]
+            
+            # Step 2: Define column positions
             col_final = n_cols
             col_accy = n_cols + 1
-            worksheet.write(0, col_final, "Final Forecast", hdr6)
-            worksheet.write(0, col_accy, "Final Accy %", hdr6)
-
-            for row in range(1, n_rows + 1):
-                # Final Forecast: Average of top 5 closest to mean
-                base_f1 = (
-                    "LET("
-                    "vals, HSTACK(C{r},J{r},M{r},P{r},S{r},V{r},Y{r},AB{r}),"
-                    "arr, TOCOL(CHOOSE({{1,2,3,4,5,6,7,8}}, "
-                    "C{r},J{r},M{r},P{r},S{r},V{r},Y{r},AB{r})),"
-                    "mu, AVERAGE(arr),"
-                    "AVERAGE(TAKE(SORTBY(arr, ABS(arr-mu), 1), 5))"
-                    ")"
-                ).format(r=row + 1)
-                worksheet.write_formula(row, col_final, f"=IFERROR({base_f1}, \"\")", int_fmt)
-
-                # Final Accuracy
-                base_f2 = (
-                    "IF(ABS(X{r}-$B{r})/$B{r}>1,"
-                    "ABS(X{r}-$B{r})/$B{r}-1,"
-                    "1-ABS(X{r}-$B{r})/$B{r})"
-                ).format(r=row + 1)
-                worksheet.write_formula(row, col_accy, f"=IFERROR({base_f2}, \"\")", pct_fmt)
-
-            # Extra columns: headers + formulas
+            
+            # Step 3: Write extra column headers first (so we can reference AB Current Forecast)
             for idx, (header, formula) in enumerate(extra_headers, start=n_cols + 2):
                 worksheet.write(0, idx, header, hdr_extra)
                 if header in numeric_headers:
                     worksheet.set_column(idx, idx, None, int_fmt)
-                for row in range(1, n_rows + 1):
+            
+            # Step 4: Build dynamic formulas for each row
+            for row in range(1, n_rows + 1):
+                excel_row = row + 1  # Excel is 1-indexed, add 1 for header
+                
+                # Build list of cell references for present models
+                model_cell_refs = []
+                for model_col in present_model_cols:
+                    col_letter = _col_number_to_letter(df_out.columns.get_loc(model_col))
+                    model_cell_refs.append(f"{col_letter}{excel_row}")
+                
+                # Find AB Current Forecast column (4th extra column: n_cols + 2 + 3)
+                ab_current_col_num = n_cols + 2 + 3  # Index of "AB Current Forecast"
+                ab_current_letter = _col_number_to_letter(ab_current_col_num)
+                ab_current_ref = f"{ab_current_letter}{excel_row}"
+                
+                # Generate dynamic Final Forecast formula
+                final_forecast_formula = build_dynamic_final_forecast_formula(
+                    excel_row, 
+                    model_cell_refs, 
+                    ab_current_ref
+                )
+                
+                # DEBUG: Print the formula for the first row
+                if row == 1:
+                    print(f"\n===== DEBUG: Final Forecast Formula for Row 2 =====")
+                    print(f"Model cell refs: {model_cell_refs}")
+                    print(f"AB Current ref: {ab_current_ref}")
+                    print(f"Generated formula: {final_forecast_formula}")
+                    print(f"Formula length: {len(final_forecast_formula)}")
+                    print("="*60 + "\n")
+                
+                worksheet.write_formula(row, col_final, final_forecast_formula, int_fmt)
+                
+                # Final Accuracy formula (references Final Forecast column dynamically)
+                final_forecast_letter = _col_number_to_letter(col_final)
+                base_f2 = (
+                    f"IF(ABS({final_forecast_letter}{excel_row}-$B{excel_row})/$B{excel_row}>1,"
+                    f"ABS({final_forecast_letter}{excel_row}-$B{excel_row})/$B{excel_row}-1,"
+                    f"1-ABS({final_forecast_letter}{excel_row}-$B{excel_row})/$B{excel_row})"
+                )
+                worksheet.write_formula(row, col_accy, f"=IFERROR({base_f2}, \"\")", pct_fmt)
+                
+                # Write extra column formulas
+                for idx, (header, formula) in enumerate(extra_headers, start=n_cols + 2):
                     fmt = int_fmt if header in numeric_headers else None
-                    worksheet.write_formula(row, idx, formula.format(row=row + 1), fmt)
+                    worksheet.write_formula(row, idx, formula.format(row=excel_row), fmt)
+            
+            # Step 5: Write Final Forecast and Accuracy headers
+            worksheet.write(0, col_final, "Final Forecast", hdr6)
+            worksheet.write(0, col_accy, "Final Accy %", hdr6)
 
         # Return Excel file
         output.seek(0)
