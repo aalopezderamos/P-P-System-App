@@ -333,10 +333,17 @@
         </div>
 
         <div class="upload-section">
-            <h2>📤 Upload CSV File</h2>
+            <h2>📤 Upload CSV File (Past Sales)</h2>
             <input type="file" id="fileInput" accept=".csv" style="display:none">
             <button onclick="document.getElementById('fileInput').click()">Choose File</button>
             <p id="fileName" style="margin-top: 10px; color: #666;">No file selected</p>
+        </div>
+        <div class="upload-section" style="border-style: dashed; border-width: 2px; opacity: 0.8;">
+            <h2>📊 Upload AB All Forecast Report (Optional)</h2>
+            <p style="color: #ddd; font-size: 14px; margin: 5px 0;">Upload to populate Current Forecast, AB Forecast, LY Sales, PDCN, and Description columns</p>
+            <input type="file" id="abFileInput" accept=".csv" style="display:none">
+            <button onclick="document.getElementById('abFileInput').click()">Choose AB Report</button>
+            <p id="abFileName" style="margin-top: 10px; color: #666;">No file selected</p>
         </div>
 
         <div class="controls">
@@ -566,6 +573,15 @@
             }
         };
 
+        let selectedAbFile = null;
+        document.getElementById('abFileInput').onchange = function(e) {
+            selectedAbFile = e.target.files[0];
+            if (selectedAbFile) {
+                document.getElementById('abFileName').textContent = 'Selected: ' + selectedAbFile.name;
+                showAlert('AB Report uploaded! Will be used for enhanced data lookup.', 'info');
+            }
+        };
+
         let abortController = null;
         let timerInterval = null;
         let startTime = null;
@@ -602,6 +618,11 @@
             const formData = new FormData();
             formData.append('file', selectedFile);
             formData.append('config', JSON.stringify(config));
+            
+            // Add AB report if uploaded
+            if (selectedAbFile) {
+                formData.append('ab_report', selectedAbFile);
+            }
 
             try {
                 document.getElementById('statusMsg').textContent = 'Processing forecast... this may take several minutes.';

@@ -785,12 +785,86 @@ async def serve_pour():
 # =====================================================================
 # PREDICT APP ROUTES (Your existing forecast endpoint)
 # =====================================================================
+def parse_ab_report(ab_report_bytes: bytes) -> Dict:
+    """
+    Parse AB All Forecast Report CSV and create lookup dictionary
+    
+    Returns:
+        dict keyed by (pdcn, saturday_date) with values:
+        {
+            'curr_forecast': value,
+            'auto_forecast': value,
+            'prior_yr': value,
+            'pdcn': value,
+            'description': 'Brand Package'
+        }
+    """
+    df = pd.read_csv(BytesIO(ab_report_bytes))
+    
+    # Normalize column names
+    df.columns = df.columns.str.strip()
+    
+    # Extract required columns
+    required_cols = ["Curr. Forecast", "Auto Forecast", "Prior YR(Act)", 
+                     "pdcn", "Brand", "Package", "Forecast Week"]
+    
+    missing_cols = set(required_cols) - set(df.columns)
+    if missing_cols:
+        raise HTTPException(
+            status_code=400,
+            detail=f"AB report missing required columns: {missing_cols}"
+        )
+    
+    lookup = {}
+    
+    for _, row in df.iterrows():
+        # Parse Forecast Week format: "1-2025-11-10" -> extract date and convert to Saturday
+        forecast_week = str(row["Forecast Week"])
+        
+        try:
+            # Split format: [week_num]-[YYYY-MM-DD]
+            parts = forecast_week.split("-")
+            if len(parts) >= 4:
+                # Reconstruct date from parts 1, 2, 3 (year, month, day)
+                date_str = f"{parts[1]}-{parts[2]}-{parts[3]}"
+                monday_date = pd.to_datetime(date_str).normalize()
+                # AB file uses Monday dates, convert to Saturday (add 5 days)
+                saturday_date = monday_date + pd.Timedelta(days=5)
+            else:
+                continue  # Skip malformed dates
+        except:
+            continue  # Skip rows with parsing issues
+        
+        # Create lookup key
+        pdcn = str(row["pdcn"]).strip()
+        key = (pdcn, saturday_date)
+        
+        # Combine Brand + Package for description
+        brand = str(row["Brand"]).strip() if pd.notna(row["Brand"]) else ""
+        package = str(row["Package"]).strip() if pd.notna(row["Package"]) else ""
+        description = f"{brand} {package}".strip()
+        
+        # Store values
+        lookup[key] = {
+            'curr_forecast': row["Curr. Forecast"] if pd.notna(row["Curr. Forecast"]) else "",
+            'auto_forecast': row["Auto Forecast"] if pd.notna(row["Auto Forecast"]) else "",
+            'prior_yr': row["Prior YR(Act)"] if pd.notna(row["Prior YR(Act)"]) else "",
+            'pdcn': pdcn,
+            'description': description
+        }
+    
+    return lookup
 
 @app.post("/api/forecast")
-async def create_forecast(file: UploadFile = File(...), config: str = Form(None)):
+async def create_forecast(
+    file: UploadFile = File(...), 
+    config: str = Form(None),
+    ab_report: Optional[UploadFile] = File(None)
+):
     """
     Multi-model forecast endpoint
     Processes CSV upload and returns Excel with forecasts
+    Optional AB report for enhanced data lookup
     """
     try:
         # Parse configuration
@@ -833,6 +907,20 @@ async def create_forecast(file: UploadFile = File(...), config: str = Form(None)
         
         print(f"DEBUG: Model flags - Prophet:{run_prophet_flag}, Sarimax:{run_sarimax_flag}, Holt:{run_holt_flag}, XGB:{run_xgb_flag}")
 
+        # Parse AB report if provided
+        ab_lookup = {}
+        if ab_report:
+            try:
+                print("\n===== AB REPORT UPLOAD DETECTED =====")
+                ab_contents = await ab_report.read()
+                ab_lookup = parse_ab_report(ab_contents)
+                print(f"AB Report parsed successfully: {len(ab_lookup)} lookup entries created")
+                print("="*40 + "\n")
+            except Exception as e:
+                print(f"WARNING: Failed to parse AB report: {str(e)}")
+                # Continue without AB data rather than failing
+                ab_lookup = {}
+    
         # Read uploaded file
         contents = await file.read()
         df = pd.read_csv(BytesIO(contents))
@@ -967,63 +1055,25 @@ async def create_forecast(file: UploadFile = File(...), config: str = Form(None)
             hdr10 = workbook.add_format({**wrap_center, "bg_color": "#FFF2CC"})
             hdr_extra = workbook.add_format({**wrap_center, "bg_color": "#C4BD97"})
 
-            # Extra columns with formulas
+            # Extra columns - will be populated with values from AB report (or blank if not available)
             extra_headers = [
-                ("Increase", "=X{row}*0.93"),
-                (
-                    "AB Past Forecast",
-                    "=XLOOKUP(AF{row}, '[Master Incoming Report NEW.xlsm]AB Forecast Accy-Bias'!$B:$B, "
-                    "'[Master Incoming Report NEW.xlsm]AB Forecast Accy-Bias'!$M:$M, \"\")",
-                ),
-                (
-                    "Past Forecast",
-                    "=XLOOKUP(AF{row}, '[Master Incoming Report NEW.xlsm]AB Forecast Accy-Bias'!$B:$B, "
-                    "'[Master Incoming Report NEW.xlsm]AB Forecast Accy-Bias'!$AF:$AF, \"\")",
-                ),
-                (
-                    "AB Current Forecast",
-                    "=XLOOKUP(AF{row}, '[Master Incoming Report NEW.xlsm]AB Forecast Report'!$A:$A, "
-                    "'[Master Incoming Report NEW.xlsm]AB Forecast Report'!$P:$P, \"\")",
-                ),
-                (
-                    "Current Forecast",
-                    "=XLOOKUP(AF{row}, '[Master Incoming Report NEW.xlsm]AB Forecast Report'!$A:$A, "
-                    "'[Master Incoming Report NEW.xlsm]AB Forecast Report'!$T:$T, \"\")",
-                ),
-                (
-                    "LY Sales",
-                    "=XLOOKUP(AF{row}, '[Master Incoming Report NEW.xlsm]AB Forecast Report'!$A:$A, "
-                    "'[Master Incoming Report NEW.xlsm]AB Forecast Report'!$S:$S, \"\")",
-                ),
-                ("Helper", "=W{row}&A{row}"),
+                ("Increase", "=X{row}*0.93"),  # Keep as formula
+                ("AB Auto-Forecast", ""),  # Will be populated with values
+                ("Current Forecast", ""),  # Will be populated with values
+                ("LY Sales", ""),  # Will be populated with values
                 (
                     "Week Number",
                     '=IF(A{row} < (TODAY() - WEEKDAY(TODAY(), 2) + 1), "Past Date", '
                     'IF(A{row} <= (TODAY() - WEEKDAY(TODAY(), 2) + 6), 0, '
                     'IF(INT((A{row} - (TODAY() - WEEKDAY(TODAY(), 2) + 1)) / 7) <= 12, '
                     'INT((A{row} - (TODAY() - WEEKDAY(TODAY(), 2) + 1)) / 7), "Past Date")))'
-                ),
-                (
-                    "PDCN",
-                    "=XLOOKUP(W{row}, '[Master Incoming Report NEW.xlsm]Overview'!$D:$D, "
-                    "'[Master Incoming Report NEW.xlsm]Overview'!$E:$E, \"\")",
-                ),
-                (
-                    "Supplier",
-                    "=XLOOKUP(W{row}, '[Master Incoming Report NEW.xlsm]Overview'!$D:$D, "
-                    "'[Master Incoming Report NEW.xlsm]Overview'!$B:$B, \"\")",
-                ),
-                (
-                    "Description",
-                    "=XLOOKUP(W{row}, '[Master Incoming Report NEW.xlsm]Overview'!$D:$D, "
-                    "'[Master Incoming Report NEW.xlsm]Overview'!$C:$C, \"\")",
-                ),
+                ),  # Keep as formula
+                ("PDCN", ""),  # Will be populated with values
+                ("Description", ""),  # Will be populated with values
             ]
             numeric_headers = {
                 "Increase",
-                "AB Past Forecast",
-                "Past Forecast",
-                "AB Current Forecast",
+                "AB Auto-Forecast",
                 "Current Forecast",
                 "LY Sales",
             }
@@ -1257,8 +1307,7 @@ async def create_forecast(file: UploadFile = File(...), config: str = Form(None)
             
             # Find which extra columns to hide (everything after "LY Sales")
             extra_col_start = n_cols + 2  # First extra column
-            columns_to_keep_visible = ["Increase", "AB Past Forecast", "Past Forecast", 
-                                       "AB Current Forecast", "Current Forecast", "LY Sales"]
+            columns_to_keep_visible = ["Increase", "AB Auto-Forecast", "Current Forecast", "LY Sales","Description"]
             
             first_hidden_extra = None
             for idx, (header, formula) in enumerate(extra_headers):
@@ -1311,8 +1360,8 @@ async def create_forecast(file: UploadFile = File(...), config: str = Form(None)
                     col_letter = _col_number_to_letter(df_out.columns.get_loc(model_col))
                     model_cell_refs.append(f"{col_letter}{excel_row}")
                 
-                # Find AB Current Forecast column (4th extra column: n_cols + 2 + 3)
-                ab_current_col_num = n_cols + 2 + 3  # Index of "AB Current Forecast"
+                # Find AB Current Forecast column (2nd extra column: n_cols + 2 + 1)
+                ab_current_col_num = n_cols + 2 + 1  # Index of "AB Current Forecast"
                 ab_current_letter = _col_number_to_letter(ab_current_col_num)
                 ab_current_ref = f"{ab_current_letter}{excel_row}"
                 
@@ -1343,10 +1392,42 @@ async def create_forecast(file: UploadFile = File(...), config: str = Form(None)
                 )
                 worksheet.write_formula(row, col_accy, f"=IFERROR({base_f2}, \"\")", pct_fmt, "")
                 
-                # Write extra column formulas
+                # Write extra column values/formulas
+                # Get SKU ID and Date for this row
+                sku_id = str(df_out.iloc[row - 1]['sku_id'])
+                row_date = pd.to_datetime(df_out.iloc[row - 1]['ds']).normalize()
+                lookup_key = (sku_id, row_date)
+                
+                # Get AB data if available
+                ab_data = ab_lookup.get(lookup_key, {})
+                
                 for idx, (header, formula) in enumerate(extra_headers, start=n_cols + 2):
                     fmt = int_fmt if header in numeric_headers else None
-                    worksheet.write_formula(row, idx, formula.format(row=excel_row), fmt)
+                    
+                    if header == "Increase":
+                        # Keep as formula
+                        worksheet.write_formula(row, idx, formula.format(row=excel_row), fmt)
+                    elif header == "Week Number":
+                        # Keep as formula
+                        worksheet.write_formula(row, idx, formula.format(row=excel_row), fmt)
+                    elif header == "AB Auto-Forecast":
+                        value = ab_data.get('auto_forecast', '')
+                        worksheet.write(row, idx, value, fmt)
+                    elif header == "Current Forecast":
+                        value = ab_data.get('curr_forecast', '')
+                        worksheet.write(row, idx, value, fmt)
+                    elif header == "LY Sales":
+                        value = ab_data.get('prior_yr', '')
+                        worksheet.write(row, idx, value, fmt)
+                    elif header == "PDCN":
+                        value = ab_data.get('pdcn', '')
+                        worksheet.write(row, idx, value, None)
+                    elif header == "Description":
+                        value = ab_data.get('description', '')
+                        worksheet.write(row, idx, value, None)
+                    else:
+                        # Any other columns as formula
+                        worksheet.write_formula(row, idx, formula.format(row=excel_row), fmt)
             
             # Step 5: Write Final Forecast and Accuracy headers
             worksheet.write(0, col_final, "Final Forecast", hdr6)
