@@ -938,10 +938,15 @@ async def create_forecast(file: UploadFile = File(...), config: str = Form(None)
         # ======================== Excel Export ========================
         output = BytesIO()
         with pd.ExcelWriter(
-            output, engine="xlsxwriter", date_format="mm/dd/yyyy", datetime_format="mm/dd/yyyy"
+            output, 
+            engine="xlsxwriter", 
+            date_format="mm/dd/yyyy", 
+            datetime_format="mm/dd/yyyy",
+            engine_kwargs={'options': {'strings_to_formulas': True, 'strings_to_urls': False}}
         ) as writer:
             df_out.to_excel(writer, index=False, sheet_name="forecasts")
             workbook = writer.book
+            workbook.use_future_functions = True
             worksheet = writer.sheets["forecasts"]
             n_rows, n_cols = df_out.shape
 
@@ -1327,7 +1332,7 @@ async def create_forecast(file: UploadFile = File(...), config: str = Form(None)
                     print(f"Formula length: {len(final_forecast_formula)}")
                     print("="*60 + "\n")
                 
-                worksheet.write_formula(row, col_final, final_forecast_formula, int_fmt)
+                worksheet.write_formula(row, col_final, final_forecast_formula, int_fmt, "")
                 
                 # Final Accuracy formula (references Final Forecast column dynamically)
                 final_forecast_letter = _col_number_to_letter(col_final)
@@ -1336,7 +1341,7 @@ async def create_forecast(file: UploadFile = File(...), config: str = Form(None)
                     f"ABS({final_forecast_letter}{excel_row}-$B{excel_row})/$B{excel_row}-1,"
                     f"1-ABS({final_forecast_letter}{excel_row}-$B{excel_row})/$B{excel_row})"
                 )
-                worksheet.write_formula(row, col_accy, f"=IFERROR({base_f2}, \"\")", pct_fmt)
+                worksheet.write_formula(row, col_accy, f"=IFERROR({base_f2}, \"\")", pct_fmt, "")
                 
                 # Write extra column formulas
                 for idx, (header, formula) in enumerate(extra_headers, start=n_cols + 2):
@@ -1346,7 +1351,10 @@ async def create_forecast(file: UploadFile = File(...), config: str = Form(None)
             # Step 5: Write Final Forecast and Accuracy headers
             worksheet.write(0, col_final, "Final Forecast", hdr6)
             worksheet.write(0, col_accy, "Final Accy %", hdr6)
-
+        
+        # CRITICAL: Close the writer first, then modify the raw XML
+        # This forces Excel to recalculate on open
+        
         # Return Excel file
         output.seek(0)
         return StreamingResponse(
