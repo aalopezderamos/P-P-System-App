@@ -727,12 +727,6 @@
             document.getElementById('alerts').appendChild(div);
             if (type === 'info') setTimeout(() => div.remove(), 5000);
         }
-
-        // Check API on load
-        fetch('http://localhost:8000/')
-            .then(r => r.json())
-            .then(d => showAlert('✓ Connected to API', 'info'))
-            .catch(e => showAlert('⚠️ Cannot connect to API. Start the server first!', 'error'));
     </script>
 </body>
 </html>
