@@ -304,41 +304,25 @@ def run_neuralprophet(df_sku: pd.DataFrame, holidays_df: pd.DataFrame, horizon_w
     future_sats = build_future_saturdays(last_date, horizon_weeks)
     future = pd.DataFrame({"ds": future_sats})
     future = _add_event_flags(future, holidays_df, event_names)
-    future["y"] = np.nan
-    # Predict on training data (historical) separately
-    def _predict_historical():
-        hist_df = train_df[["ds"] + event_names].copy()
-        hist_df["y"] = np.nan  # Add y column with NaN values
-        return m.predict(hist_df)
-    
-    if "_safe_globals_ctx" in globals() and _safe_globals_ctx:
-        with _safe_globals_ctx(_NP_SAFE_GLOBALS):
-            hist_forecast = _predict_historical()
-    else:
-        hist_forecast = _predict_historical()
-    
-    # Predict on future dates separately
+    full_future = (
+        pd.concat([train_df[["ds"] + event_names], future[["ds"] + event_names]], ignore_index=True)
+        .drop_duplicates("ds").sort_values("ds")
+    )
+    if "y" not in full_future.columns:
+        full_future["y"] = np.nan
+    missing_future = [ev for ev in event_names if ev not in full_future.columns]
+    if missing_future:
+        raise ValueError(f"Missing event cols in full_future: {missing_future}")
     def _predict_model():
-        return m.predict(future)
-    
+        return m.predict(full_future)
     if "_safe_globals_ctx" in globals() and _safe_globals_ctx:
         with _safe_globals_ctx(_NP_SAFE_GLOBALS):
             forecast = _predict_model()
     else:
         forecast = _predict_model()
-    
-    # Create historical predictions dataframe
-    out_hist = hist_forecast[["ds", "yhat1"]].rename(columns={"yhat1": "mind_melt_double_ipa_yhat"})
-    out_hist["mind_melt_double_ipa_yhat_lower"] = hist_forecast.get("yhat1 5.0%", np.nan)
-    out_hist["mind_melt_double_ipa_yhat_upper"] = hist_forecast.get("yhat1 95.0%", np.nan)
-    
-    # Create future predictions dataframe
     out = forecast[["ds", "yhat1"]].rename(columns={"yhat1": "mind_melt_double_ipa_yhat"})
     out["mind_melt_double_ipa_yhat_lower"] = forecast.get("yhat1 5.0%", np.nan)
     out["mind_melt_double_ipa_yhat_upper"] = forecast.get("yhat1 95.0%", np.nan)
-    
-    # Concatenate historical + future
-    out = pd.concat([out_hist, out], ignore_index=True)
     return out
 
 def run_sarimax(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
@@ -589,35 +573,7 @@ def run_nbeats(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
         print(f"N-BEATS predict failed: {e}")
         return pd.DataFrame(columns=["ds", "legacy_grand_reserve_yhat", "legacy_grand_reserve_yhat_lower", "legacy_grand_reserve_yhat_upper"])
 
-    # Try to get historical forecasts
-    try:
-        # N-BEATS can only predict on data it has enough context for (input_chunk_length)
-        # So we can only get predictions starting from position in_len onwards
-        hist_start_idx = in_len
-        if hist_start_idx < len(series):
-            # Predict on historical data where we have enough context
-            hist_series = series[:hist_start_idx + (len(series) - hist_start_idx)]
-            hist_predictions = []
-            
-            # Iteratively predict through the historical period
-            for i in range(hist_start_idx, len(series)):
-                pred = model.predict(n=1, series=series[:i])
-                hist_predictions.append({
-                    "ds": series.time_index[i],
-                    "legacy_grand_reserve_yhat": pred.values()[0][0]
-                })
-            
-            if hist_predictions:
-                df_hist = pd.DataFrame(hist_predictions)
-                df_hist["legacy_grand_reserve_yhat_lower"] = np.nan
-                df_hist["legacy_grand_reserve_yhat_upper"] = np.nan
-                
-                # Combine historical and future
-                df_pred = pd.concat([df_hist, df_pred], ignore_index=True)
-    except Exception as e:
-        print(f"N-BEATS historical forecasts failed (continuing with future only): {e}")
-        # Continue with just future predictions if historical fails
-
+    # Skip historical forecasts for simplicity/reliability
     return df_pred
 
 # =====================================================================
@@ -1100,11 +1056,8 @@ async def create_forecast(
             hdr_extra = workbook.add_format({**wrap_center, "bg_color": "#C4BD97"})
 
             # Extra columns - will be populated with values from AB report (or blank if not available)
-            # Calculate Final Forecast column letter for dynamic formula
-            final_forecast_letter = _col_number_to_letter(col_final)
-            
             extra_headers = [
-                ("Increase", "=X{row}*0.93"),  # Will be updated dynamically
+                ("Increase", "=X{row}*0.93"),  # Keep as formula
                 ("AB Auto-Forecast", ""),  # Will be populated with values
                 ("Current Forecast", ""),  # Will be populated with values
                 ("LY Sales", ""),  # Will be populated with values
@@ -1396,8 +1349,6 @@ async def create_forecast(
                 worksheet.write(0, idx, header, hdr_extra)
                 if header in numeric_headers:
                     worksheet.set_column(idx, idx, None, int_fmt)
-            col_final = n_cols + 2 + len(extra_headers)
-            col_accy = col_final + 1
             
             # Step 4: Build dynamic formulas for each row
             for row in range(1, n_rows + 1):
@@ -1451,11 +1402,6 @@ async def create_forecast(
                 ab_data = ab_lookup.get(lookup_key, {})
                 
                 for idx, (header, formula) in enumerate(extra_headers, start=n_cols + 2):
-                    # Dynamically update Increase formula to reference Final Forecast column
-                    if header == "Increase":
-                        final_forecast_letter = _col_number_to_letter(col_final)
-                        formula = f"={final_forecast_letter}{excel_row}*0.93"
-                    
                     fmt = int_fmt if header in numeric_headers else None
                     
                     if header == "Increase":
