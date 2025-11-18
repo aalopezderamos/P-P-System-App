@@ -1387,7 +1387,7 @@ async def create_forecast(
                         worksheet.conditional_format(f'{col_letter}{row}', {
                             'type': 'formula',
                             'criteria': f'={col_letter}{row}=MAX({row_cells})',
-                            'format': workbook.add_format({'bg_color': '#00B050', 'font_color': '#FFFFFF'})  # Dark green, white text
+                            'format': workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})  # Light green, Dark Green Text
                         })
                         
                         # Light green for values within 90% of max
