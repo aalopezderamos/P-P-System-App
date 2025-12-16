@@ -70,7 +70,7 @@
         .container { 
             max-width: 1200px; 
             margin: 0px auto; 
-            padding: 15px20px; 
+            padding: 15px 20px; 
         }
         
         /* WOOD TEXTURE SECTIONS */
@@ -122,6 +122,7 @@
             background: #2a2a2a;
             color: #fff;
             font-size: 14px;
+            box-sizing: border-box;
         }
         
         /* CALIBRATION GRID */
@@ -137,6 +138,12 @@
             border: 2px solid #EBBB40;
             border-radius: 8px;
             padding: 15px;
+            text-align: center;
+        }
+        .calibration-card button {
+            display: block;
+            margin: 15px auto;
+            width: fit-content;
         }
         
         .calibration-card h3 {
@@ -234,66 +241,42 @@
             </a>
         </div>
 
-        <!-- FILE UPLOAD SECTION -->
+        <!-- STEP 1: UPLOAD FILE -->
         <div class="section">
-            <h2>📤 Upload Forecast File</h2>
-            <input type="file" id="fileInput" accept=".xlsx">
-            <button onclick="uploadFile()">Upload & Process</button>
-            <div id="uploadStatus"></div>
+            <h2>📁 Upload Forecast File</h2>
+            <p>Select your Excel file with forecast data. It will be automatically processed.</p>
+            <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="uploadFile()">
+            <div id="uploadStatus" style="margin-top: 10px;"></div>
         </div>
 
-        <!-- CALIBRATION SECTION -->
-        <div class="section">
-            <h2>🛠️ Calibration Toolbar</h2>
-            <p style="color: #ddd;">Calibrate screen coordinates for automation</p>
-            
-            <div class="calibration-grid">
-                <div class="calibration-card">
-                    <h3>📌 PDCN Field</h3>
-                    <button onclick="calibratePDCN()">Capture PDCN Coordinates</button>
-                    <div class="coord-display" id="pdcnCoords">Not calibrated</div>
-                </div>
-                
-                <div class="calibration-card">
-                    <h3>📌 Week 1 Field</h3>
-                    <button onclick="calibrateWeek1()">Capture Week 1 Coordinates</button>
-                    <div class="coord-display" id="week1Coords">Not calibrated</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- ITEM SELECTION SECTION -->
-        <div class="section" id="selectionSection" style="display: none;">
-            <h2>🏷️ Select Supplier Item</h2>
-            <select id="itemSelect" size="10" style="height: 200px;">
-                <option value="">-- Upload file first --</option>
-            </select>
+        <!-- STEP 2: POUR DATA -->
+        <div id="pourSection">
+        <h2 style="color: #EBBB40;">Pour Forecast Data</h2>
+        <p style="color: #fff;">Click Pour to automatically copy the PDCN from OnePortal and input the forecast values.</p>
             
             <div class="action-buttons">
-                <button onclick="findPDCN()">🧲 Find PDCN from Screen</button>
-                <button onclick="executeImport()" class="danger">🚀 Execute Import</button>
+                <button onclick="executePour()" style="font-size: 18px; padding: 15px 30px;">
+                    🍺 POUR
+                </button>
+            </div>
+            
+            <div id="gifPlaceholder" class="gif-placeholder"></div>
+            
+            <!-- Completed Items -->
+            <div id="completedSection" class="completed-section" style="display: none;">
+                <h3 style="color: #EBBB40;">✅ Completed Items</h3>
+                <div id="completedList"></div>
             </div>
         </div>
-
-        <!-- GIF PLACEHOLDER -->
-        <div id="gifPlaceholder" class="gif-placeholder"></div>
 
         <!-- ALERTS -->
         <div id="alertContainer"></div>
-
-        <!-- COMPLETED ITEMS -->
-        <div id="completedSection" style="display: none;">
-            <div class="section">
-                <h2>✅ Completed Items</h2>
-                <div id="completedList" class="completed-section"></div>
-            </div>
         </div>
     </div>
-
+    <!-- ✅ END OF STEP 4 ✅ -->
     <script>
-        let uploadedItems = [];
-        let pdcnCoords = null;
-        let week1Coords = null;
+        // Global variables
+        let uploadedData = [];
         let completedPDCNs = [];
 
         async function uploadFile() {
@@ -301,9 +284,11 @@
             const file = fileInput.files[0];
             
             if (!file) {
-                showAlert('Please select a file first', 'error');
                 return;
             }
+
+            document.getElementById('uploadStatus').innerHTML = 
+                '<div class="alert alert-info">⏳ Processing file...</div>';
 
             const formData = new FormData();
             formData.append('file', file);
@@ -317,168 +302,36 @@
                 const data = await response.json();
                 
                 if (data.status === 'success') {
-                    uploadedItems = data.items;
-                    populateItemSelect(data.items);
-                    document.getElementById('selectionSection').style.display = 'block';
-                    showAlert(`✅ File uploaded! Found ${data.items.length} items.`, 'success');
+                    uploadedData = data.items;
+                    document.getElementById('uploadStatus').innerHTML = 
+                        `<div class="alert alert-success">✅ File uploaded! Found ${data.items.length} items. Ready to pour!</div>`;
                 } else {
-                    showAlert('Upload failed', 'error');
+                    document.getElementById('uploadStatus').innerHTML = 
+                        '<div class="alert alert-error">❌ Upload failed</div>';
                 }
             } catch (error) {
-                showAlert('Error uploading file: ' + error.message, 'error');
+                document.getElementById('uploadStatus').innerHTML = 
+                    '<div class="alert alert-error">❌ Error uploading file: ' + error.message + '</div>';
             }
         }
 
-        function populateItemSelect(items) {
-            const select = document.getElementById('itemSelect');
-            select.innerHTML = '';
-            items.forEach(item => {
-                const option = document.createElement('option');
-                option.value = item.pdcn;
-                option.textContent = item.display_label;
-                select.appendChild(option);
-            });
-        }
-
-        async function calibratePDCN() {
-            showAlert('⏳ Move mouse to PDCN field... capturing in 3 seconds!', 'info');
-            
-            try {
-                const response = await fetch('http://localhost:8000/api/pour/calibrate', {
-                    method: 'POST'
-                });
-                const data = await response.json();
-                pdcnCoords = { x: data.x, y: data.y };
-                document.getElementById('pdcnCoords').textContent = `X: ${data.x}, Y: ${data.y}`;
-                showAlert(`✅ PDCN coordinates captured: (${data.x}, ${data.y})`, 'success');
-            } catch (error) {
-                showAlert('Error capturing coordinates: ' + error.message, 'error');
-            }
-        }
-
-        async function calibrateWeek1() {
-            showAlert('⏳ Move mouse to Week 1 field... capturing in 3 seconds!', 'info');
-            
-            try {
-                const response = await fetch('http://localhost:8000/api/pour/calibrate', {
-                    method: 'POST'
-                });
-                const data = await response.json();
-                week1Coords = { x: data.x, y: data.y };
-                document.getElementById('week1Coords').textContent = `X: ${data.x}, Y: ${data.y}`;
-                showAlert(`✅ Week 1 coordinates captured: (${data.x}, ${data.y})`, 'success');
-            } catch (error) {
-                showAlert('Error capturing coordinates: ' + error.message, 'error');
-            }
-        }
-
-        async function findPDCN() {
-            if (!pdcnCoords) {
-                showAlert('⚠️ Please calibrate PDCN coordinates first', 'warning');
+        async function executePour() {
+            if (!uploadedData || uploadedData.length === 0) {
+                showAlert('⚠️ Please upload a file first', 'warning');
                 return;
             }
 
-            try {
-                const response = await fetch('http://localhost:8000/api/pour/find-pdcn', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        pdcn_x: pdcnCoords.x,
-                        pdcn_y: pdcnCoords.y
-                    })
-                });
-                
-                const data = await response.json();
-                const pdcn = data.pdcn;
-                
-                // Find matching item
-                const select = document.getElementById('itemSelect');
-                for (let i = 0; i < select.options.length; i++) {
-                    if (select.options[i].value === pdcn) {
-                        select.selectedIndex = i;
-                        showAlert(`✅ Found matching PDCN: ${pdcn}`, 'success');
-                        return;
-                    }
-                }
-                
-                showAlert(`⚠️ No match found for PDCN: ${pdcn}`, 'warning');
-            } catch (error) {
-                showAlert('Error finding PDCN: ' + error.message, 'error');
-            }
+            showAlert('✅ Data ready! Now run the Automa workflow from the extension menu (Ctrl+Shift+E)', 'success');
         }
 
-        async function executeImport() {
-            const select = document.getElementById('itemSelect');
-            const selectedPDCN = select.value;
-            
-            if (!selectedPDCN) {
-                showAlert('⚠️ Please select an item first', 'warning');
-                return;
-            }
-            
-            if (!week1Coords) {
-                showAlert('⚠️ Please calibrate Week 1 coordinates first', 'warning');
-                return;
-            }
-
-            // Show loading GIF
-            document.getElementById('gifPlaceholder').innerHTML = 
-                '<img src="https://media.giphy.com/media/TngQmUH8JphkyaGQJW/giphy.gif" width="300">';
-
-            try {
-                const response = await fetch('http://localhost:8000/api/pour/execute', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        pdcn: selectedPDCN,
-                        week1_x: week1Coords.x,
-                        week1_y: week1Coords.y
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (data.status === 'success') {
-                    // Show success GIF
-                    document.getElementById('gifPlaceholder').innerHTML = 
-                        '<img src="https://media.giphy.com/media/9K2nFglCAQClO/giphy.gif" width="300">';
-                    
-                    showAlert(`✅ Import complete! Typed ${data.count} values for PDCN: ${data.pdcn}`, 'success');
-                    
-                    // Add to completed
-                    if (!completedPDCNs.includes(selectedPDCN)) {
-                        completedPDCNs.push(selectedPDCN);
-                        updateCompletedList();
-                    }
-                    
-                    setTimeout(() => {
-                        document.getElementById('gifPlaceholder').innerHTML = '';
-                    }, 3000);
-                } else {
-                    throw new Error('Import failed');
-                }
-            } catch (error) {
-                document.getElementById('gifPlaceholder').innerHTML = '';
-                showAlert('❌ Error executing import: ' + error.message, 'error');
-            }
-        }
-
-        function updateCompletedList() {
-            if (completedPDCNs.length === 0) return;
-            
+        function updateCompletedList(displayLabel) {
             document.getElementById('completedSection').style.display = 'block';
             const list = document.getElementById('completedList');
-            list.innerHTML = '';
             
-            completedPDCNs.forEach(pdcn => {
-                const item = uploadedItems.find(i => i.pdcn === pdcn);
-                if (item) {
-                    const div = document.createElement('div');
-                    div.className = 'completed-item';
-                    div.textContent = item.display_label;
-                    list.appendChild(div);
-                }
-            });
+            const div = document.createElement('div');
+            div.className = 'completed-item';
+            div.textContent = displayLabel;
+            list.appendChild(div);
         }
 
         function showAlert(msg, type) {
@@ -490,12 +343,6 @@
                 setTimeout(() => div.remove(), 5000);
             }
         }
-
-        // Check API on load
-        fetch('http://localhost:8000/')
-            .then(r => r.json())
-            .then(() => showAlert('✓ Connected to API', 'info'))
-            .catch(() => showAlert('⚠️ Cannot connect to API. Start the server first!', 'error'));
     </script>
 </body>
 </html>
