@@ -1124,9 +1124,8 @@ async def create_forecast(
                     'IF(INT((B{row} - (TODAY() - WEEKDAY(TODAY(), 2) + 1)) / 7) <= 12, '
                     'INT((B{row} - (TODAY() - WEEKDAY(TODAY(), 2) + 1)) / 7), "Past Date")))'
                 ),  # Keep as formula (NOTE: Changed A{row} to B{row} because Date moved to column B)
-                ("PDCN", ""),  # Will be populated with values
                 ("Description", ""),  # Will be populated with values
-                ("Brand Family", ""),  # NEW! Will be populated with values
+                ("Brand Family", ""),  # Will be populated with values
             ]
             numeric_headers = {
                 "AB Auto-Forecast",
@@ -1334,9 +1333,6 @@ async def create_forecast(
                     elif header == "LY Sales":
                         value = ab_data.get('prior_yr', '')
                         worksheet.write(row, idx, value, fmt)
-                    elif header == "PDCN":
-                        value = ab_data.get('pdcn', '')
-                        worksheet.write(row, idx, value, None)
                     elif header == "Description":
                         value = ab_data.get('description', '')
                         worksheet.write(row, idx, value, None)
@@ -1446,44 +1442,195 @@ async def upload_pour_file(file: UploadFile = File(...)):
     """Upload Excel file for Pour app"""
     global uploaded_pour_data
     
-    contents = await file.read()
-    df = pd.read_excel(BytesIO(contents))
+    try:
+        print(f"\n=== UPLOAD DEBUG ===")
+        print(f"Filename: {file.filename}")
+        
+        contents = await file.read()
+        df = pd.read_excel(BytesIO(contents))
+        
+        print(f"Original columns: {list(df.columns)}")
+        print(f"Original shape: {df.shape}")
+        
+        # Clean data
+        df.columns = df.columns.str.strip().str.lower()
+        
+        print(f"Cleaned columns: {list(df.columns)}")
+        
+        # Check if required columns exist (SKU ID is the PDCN)
+        required_columns = ['week number', 'sku id', 'description', 'final forecast']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            print(f"ERROR: Missing columns: {missing_columns}")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Missing required columns: {', '.join(missing_columns)}"
+            )
+        
+        print(f"Rows before filter: {len(df)}")
+        
+        # Filter out past dates only
+        df = df[df['week number'] != "Past Date"]
+        print(f"Rows after 'Past Date' filter: {len(df)}")
+        
+        # Rename sku id to pdcn for consistency with rest of code
+        df = df.rename(columns={'sku id': 'pdcn'})
+        
+        # Select only needed columns
+        df = df[['pdcn', 'description', 'final forecast', 'week number']]
+        
+        if df.empty:
+            print("ERROR: No data after filtering")
+            raise HTTPException(
+                status_code=400,
+                detail="No valid forecast data found in file"
+            )
+        
+        uploaded_pour_data = df
+        
+        # Create display options
+        df['pdcn'] = df['pdcn'].astype(str)
+        df['description'] = df['description'].astype(str)
+        df['display_label'] = df['pdcn'] + " (" + df['description'] + ")"
+        unique_options = df[['pdcn', 'display_label']].drop_duplicates().sort_values('display_label')
+        
+        print(f"SUCCESS: {len(unique_options)} unique items found")
+        print(f"First few PDCNs: {unique_options['pdcn'].head().tolist()}")
+        print("=== END DEBUG ===\n")
+        
+        return {
+            "status": "success",
+            "items": unique_options.to_dict('records')
+        }
     
-    # Clean data (from original Streamlit code)
-    df.columns = df.columns.str.strip().str.lower()
-    df = df[df['week number'] != "Past Date"]
-    df = df[df['supplier'].str.strip().str.lower() == "anheuser busch"]
-    df = df[['pdcn', 'description', 'final forecast', 'week number']]
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"EXCEPTION: {str(e)}")
+        print(f"Exception type: {type(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
+        
+        uploaded_pour_data = df
+        
+        # Create display options
+        df['pdcn'] = df['pdcn'].astype(str)
+        df['description'] = df['description'].astype(str)
+        df['display_label'] = df['pdcn'] + " (" + df['description'] + ")"
+        unique_options = df[['pdcn', 'display_label']].drop_duplicates().sort_values('display_label')
+        
+        print(f"SUCCESS: {len(unique_options)} unique items found")
+        print("=== END DEBUG ===\n")
+        
+        return {
+            "status": "success",
+            "items": unique_options.to_dict('records')
+        }
     
-    uploaded_pour_data = df
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"EXCEPTION: {str(e)}")
+        print(f"Exception type: {type(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
     
-    # Create display options
-    df['pdcn'] = df['pdcn'].astype(str)
-    df['description'] = df['description'].astype(str)
-    df['display_label'] = df['pdcn'] + " (" + df['description'] + ")"
-    unique_options = df[['pdcn', 'display_label']].drop_duplicates().sort_values('display_label')
-    
-    return {
-        "status": "success",
-        "items": unique_options.to_dict('records')
-    }
-
 @app.post("/api/pour/calibrate")
 async def calibrate_coordinates():
-    """Capture mouse coordinates after 3 second delay"""
-    time.sleep(3)
+    """Capture mouse coordinates immediately"""
     pos = pyautogui.position()
     return {"x": pos.x, "y": pos.y}
 
-@app.post("/api/pour/find-pdcn")
-async def find_pdcn(pdcn_x: int, pdcn_y: int):
-    """Find PDCN by reading from screen"""
+@app.post("/api/pour/get-pdcn")
+async def get_pdcn(request: dict):
+    """Get PDCN by clicking field and copying"""
+    import platform
+    import subprocess
+    
+    pdcn_x = request.get('pdcn_x')
+    pdcn_y = request.get('pdcn_y')
+    
+    print(f"\n=== GET PDCN DEBUG ===")
+    print(f"Coordinates: ({pdcn_x}, {pdcn_y})")
+    
+    # Detect OS
+    current_os = platform.system()
+    print(f"OS: {current_os}")
+    cmd_key = 'command' if current_os == "Darwin" else 'ctrl'
+    
+    # Focus browser - IMPROVED for macOS
+    if current_os == "Darwin":  # macOS
+        try:
+            # Try multiple Chrome app names
+            chrome_activated = False
+            for chrome_name in ['Google Chrome', 'Chrome']:
+                try:
+                    print(f"Attempting to focus {chrome_name}...")
+                    result = subprocess.run(
+                        ['osascript', '-e', f'tell application "{chrome_name}" to activate'],
+                        capture_output=True, 
+                        timeout=2,
+                        text=True
+                    )
+                    print(f"Result stdout: {result.stdout}")
+                    print(f"Result stderr: {result.stderr}")
+                    print(f"Return code: {result.returncode}")
+                    
+                    if result.returncode == 0:
+                        chrome_activated = True
+                        print(f"✓ {chrome_name} activated successfully")
+                        break
+                except Exception as e:
+                    print(f"Failed to activate {chrome_name}: {e}")
+            
+            if not chrome_activated:
+                print("⚠️ Could not activate Chrome, trying Safari...")
+                subprocess.run(['osascript', '-e', 'tell application "Safari" to activate'], 
+                              capture_output=True, timeout=2)
+            
+            time.sleep(2)  # Longer wait for window switching
+        except Exception as e:
+            print(f"macOS window focus failed: {e}")
+    
+    elif current_os == "Windows":  # Windows
+        try:
+            browser_window = None
+            for w in gw.getWindowsWithTitle(''):
+                if any(browser in w.title for browser in ['Chrome', 'Edge', 'Safari', 'Firefox']):
+                    browser_window = w
+                    break
+            
+            if browser_window:
+                browser_window.activate()
+                time.sleep(1)
+        except Exception as e:
+            print(f"Windows window focus failed: {e}")
+    
+    # Move to PDCN location
+    print(f"Moving to coordinates ({pdcn_x}, {pdcn_y})...")
     pyautogui.moveTo(pdcn_x, pdcn_y)
-    pyautogui.doubleClick()
-    time.sleep(0.2)
-    pyautogui.hotkey('ctrl', 'c')
-    time.sleep(0.2)
+    time.sleep(0.5)
+    
+    # Triple-click to select PDCN field
+    print("Triple-clicking to select PDCN field...")
+    pyautogui.click()
+    time.sleep(0.05)
+    pyautogui.click()
+    time.sleep(0.05)
+    pyautogui.click()
+    time.sleep(0.5)
+    
+    # Copy the selected text
+    print(f"Copying with {cmd_key}+C...")
+    pyautogui.hotkey(cmd_key, 'c')
+    time.sleep(0.3)
     copied_pdcn = pyperclip.paste().strip()
+    
+    print(f"Copied text: '{copied_pdcn}'")
+    print(f"Length: {len(copied_pdcn)} characters")
+    print("=== END DEBUG ===\n")
     
     return {"pdcn": copied_pdcn}
 
@@ -1501,16 +1648,33 @@ async def execute_import(request: ExecuteImportRequest):
     if filtered_df.empty:
         raise HTTPException(status_code=404, detail="PDCN not found")
     
-    # Focus browser
-    browser_window = None
-    for w in gw.getWindowsWithTitle(''):
-        if any(browser in w.title for browser in ['Chrome', 'Edge', 'Safari', 'Firefox']):
-            browser_window = w
-            break
+    # Focus browser - cross-platform
+    import platform
+    current_os = platform.system()
     
-    if browser_window:
-        browser_window.activate()
-        time.sleep(0.5)
+    if current_os == "Darwin":  # macOS
+        try:
+            import subprocess
+            try:
+                subprocess.run(['osascript', '-e', 'tell application "Google Chrome" to activate'], 
+                              capture_output=True, timeout=2)
+            except:
+                subprocess.run(['osascript', '-e', 'tell application "Safari" to activate'], 
+                              capture_output=True, timeout=2)
+            time.sleep(0.5)
+        except:
+            pass
+    
+    elif current_os == "Windows":  # Windows
+        browser_window = None
+        for w in gw.getWindowsWithTitle(''):
+            if any(browser in w.title for browser in ['Chrome', 'Edge', 'Safari', 'Firefox']):
+                browser_window = w
+                break
+        
+        if browser_window:
+            browser_window.activate()
+            time.sleep(0.5)
     
     # Click Week 1 field
     pyautogui.moveTo(request.week1_x, request.week1_y)

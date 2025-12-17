@@ -10,6 +10,7 @@ from fastapi.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 import os
 import secrets
+from fastapi import HTTPException
 
 import numpy as np
 import pandas as pd
@@ -73,6 +74,15 @@ PI_Z_90 = 1.645
 
 # Create FastAPI app
 app = FastAPI(title="Predict & Pour System", version="1.0.0")
+
+# --- Auth / Session cookie ---
+SESSION_SECRET = os.getenv("PP_SESSION_SECRET", "dev-" + secrets.token_hex(16))
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    same_site="lax",
+    https_only=False,  # set True when deployed on https
+)
 
 # CORS middleware
 app.add_middleware(
@@ -565,22 +575,171 @@ def run_nbeats(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
     # Skip historical forecasts for simplicity/reliability
     return df_pred
 
+
+# =====================================================================
+# AUTH HELPERS + ROUTES
+# =====================================================================
+
+def _is_logged_in(request: Request) -> bool:
+    return bool(request.session.get("pp_logged_in"))
+
+def _require_login(request: Request):
+    if not _is_logged_in(request):
+        raise HTTPException(status_code=401, detail="Not logged in")
+
+@app.get("/api/auth/me")
+async def auth_me(request: Request):
+    """Used by the extension to confirm session cookie is valid."""
+    return {"logged_in": _is_logged_in(request)}
+
+@app.post("/api/auth/login")
+async def auth_login(request: Request, username: str = Form(...), password: str = Form(...)):
+    # For MVP: single admin credential from env vars
+    # Set these in your terminal: PP_ADMIN_USER / PP_ADMIN_PASS
+    admin_user = os.getenv("PP_ADMIN_USER", "Aaron")
+    admin_pass = os.getenv("PP_ADMIN_PASS", "Allmight881")
+
+    if username != admin_user or password != admin_pass:
+        raise HTTPException(status_code=401, detail="Invalid username/password")
+
+    request.session["pp_logged_in"] = True
+    return {"status": "ok"}
+
+@app.post("/api/auth/logout")
+async def auth_logout(request: Request):
+    request.session.clear()
+    return {"status": "ok"}
+
+
 # =====================================================================
 # ROUTES - Homepage & Navigation
 # =====================================================================
 
 @app.get("/")
-async def root():
-    """Homepage with navigation to both apps"""
-    return HTMLResponse(content="""
+async def root(request: Request):
+    """Homepage with navigation to both apps (locked until login)"""
+
+    logged_in = bool(request.session.get("pp_logged_in"))
+
+    # =========================
+    # LOGIN OVERLAY (when logged out)
+    # =========================
+    login_overlay = """
+    <div class="pp-overlay">
+        <div class="pp-modal">
+            <h2>Sign In</h2>
+            <p>Log in to unlock Predict &amp; Pour.</p>
+
+            <label>Username</label>
+            <input id="ppUser" autocomplete="username" />
+
+            <label>Password</label>
+            <input id="ppPass" type="password" autocomplete="current-password" />
+
+            <button id="ppLoginBtn">SIGN IN</button>
+            <div class="pp-error" id="ppErr"></div>
+        </div>
+    </div>
+
+    <script>
+    document.body.classList.add("pp-locked");
+
+    async function doLogin() {
+        const username = document.getElementById("ppUser").value.trim();
+        const password = document.getElementById("ppPass").value;
+        const err = document.getElementById("ppErr");
+        err.textContent = "";
+
+        try {
+            const form = new FormData();
+            form.append("username", username);
+            form.append("password", password);
+
+            const res = await fetch("/api/auth/login", {
+                method: "POST",
+                body: form,
+                credentials: "include"
+            });
+
+            if (!res.ok) {
+                const j = await res.json().catch(() => ({}));
+                throw new Error(j.detail || "Invalid username/password");
+            }
+
+            location.reload();
+        } catch(e) {
+            err.textContent = e.message || String(e);
+        }
+    }
+
+    document.getElementById("ppLoginBtn").addEventListener("click", doLogin);
+    document.getElementById("ppPass").addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") doLogin();
+    });
+    document.getElementById("ppUser").addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") doLogin();
+    });
+    </script>
+    """
+
+    # =========================
+    # LOGOUT BUTTON (when logged in)
+    # =========================
+    logout_button = """
+    <div id="pp-logout">
+      <button id="ppLogoutBtn">LOG OUT</button>
+    </div>
+
+    <style>
+    #pp-logout{
+    position: fixed;
+    bottom: 20px;
+    right: 24px;
+    z-index: 999999;
+    }
+    #ppLogoutBtn{
+      padding: 12px 28px;
+      border-radius: 14px;
+      border: 2px solid #EBBB40;
+      background: rgba(0,0,0,0.75);
+      color: #EBBB40;
+      font-weight: 900;
+      font-size: 15px;
+      cursor: pointer;
+      box-shadow: 0 10px 30px rgba(0,0,0,.5);
+    }
+    #ppLogoutBtn:hover{
+      background: #EBBB40;
+      color: #000;
+    }
+    </style>
+
+    <script>
+    document.getElementById("ppLogoutBtn")?.addEventListener("click", async () => {
+      try{
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          credentials: "include"
+        });
+      }finally{
+        location.reload();
+      }
+    });
+    </script>
+    """
+
+    # =========================
+    # MAIN PAGE HTML
+    # =========================
+    page_html = """
     <!DOCTYPE html>
     <html>
     <head>
         <title>Predict & Pour</title>
         <style>
-            body { 
-                margin: 0; 
-                font-family: Arial, sans-serif; 
+            body {
+                margin: 0;
+                font-family: Arial, sans-serif;
                 background: #000;
                 color: #fff;
                 position: relative;
@@ -597,14 +756,14 @@ async def root():
                 z-index: -1;
                 pointer-events: none;
             }
-            
-            /* VIDEO HEADER - MATCHES YOUR APPS */
-            .header { 
+
+            /* VIDEO HEADER */
+            .header {
                 position: relative;
                 overflow: hidden;
-                color: #EBBB40; 
-                padding: 20px; 
-                text-align: center; 
+                color: #EBBB40;
+                padding: 20px;
+                text-align: center;
                 border-bottom: 3px solid #EBBB40;
                 display: flex;
                 align-items: center;
@@ -642,21 +801,21 @@ async def root():
                 margin: 0;
                 font-size: 26px;
             }
-            
+
             .container {
                 max-width: 1000px;
                 margin: 0px auto;
                 text-align: center;
                 padding: 15px 20px;
             }
-            
+
             .app-cards {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
                 gap: 30px;
                 margin: 40px 0;
             }
-            
+
             .app-card {
                 background: url('https://static.vecteezy.com/system/resources/previews/027/815/346/large_2x/dark-wood-background-texture-rustic-wooden-floor-textured-backdrop-free-photo.jpg');
                 background-size: cover;
@@ -665,25 +824,25 @@ async def root():
                 padding: 40px 30px;
                 transition: transform 0.3s, box-shadow 0.3s;
             }
-            
+
             .app-card:hover {
                 transform: translateY(-15px) scale(1.05);
                 box-shadow: 0 25px 80px rgba(235, 187, 64, 0.7);
             }
-            
+
             .app-card h2 {
                 color: #EBBB40;
                 margin: 20px 0 10px 0;
                 font-size: 32px;
             }
-            
+
             .app-card p {
                 color: #fff;
                 font-size: 16px;
                 margin: 15px 0;
                 line-height: 1.6;
             }
-            
+
             .app-card a {
                 display: inline-block;
                 background: #EBBB40;
@@ -696,22 +855,17 @@ async def root():
                 font-size: 16px;
                 transition: background 0.3s;
             }
-            
+
             .app-card a:hover {
                 background: #d4a634;
             }
-            
-            .emoji {
-                font-size: 64px;
-                margin: 10px 0;
-            }
-            
+
             .subtitle {
                 color: #EBBB40;
                 font-size: 24px;
                 margin: 10px 0 10px 0;
             }
-            
+
             .description {
                 color: #ddd;
                 max-width: 800px;
@@ -719,10 +873,84 @@ async def root():
                 line-height: 1.8;
                 font-size: 18px;
             }
+
+            /* LOGIN OVERLAY STYLES */
+            body.pp-locked > *:not(.pp-overlay) {
+                filter: blur(7px);
+                pointer-events: none;
+                user-select: none;
+            }
+            .pp-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 999999;
+                background: rgba(0,0,0,0.65);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .pp-modal {
+                width: 440px;
+                max-width: calc(100% - 40px);
+                background: #111;
+                border: 2px solid #EBBB40;
+                border-radius: 16px;
+                padding: 24px;
+                color: #fff;
+                box-shadow: 0 25px 80px rgba(0,0,0,.65);
+            }
+            .pp-modal h2 {
+                margin: 0 0 6px 0;
+                color: #EBBB40;
+                font-size: 24px;
+                font-weight: 900;
+            }
+            .pp-modal p {
+                margin: 0 0 14px 0;
+                opacity: 0.9;
+                font-size: 14px;
+                line-height: 1.4;
+            }
+            .pp-modal label {
+                display: block;
+                margin-top: 12px;
+                font-weight: 800;
+                font-size: 13px;
+                color: #fff;
+            }
+            .pp-modal input {
+                width: 100%;
+                padding: 10px 12px;
+                margin-top: 6px;
+                border-radius: 10px;
+                border: 1px solid #444;
+                background: #000;
+                color: #fff;
+                font-size: 14px;
+                box-sizing: border-box;
+            }
+            .pp-modal button {
+                width: 100%;
+                margin-top: 18px;
+                padding: 12px;
+                background: #EBBB40;
+                color: #000;
+                border: none;
+                border-radius: 10px;
+                font-weight: 900;
+                font-size: 15px;
+                cursor: pointer;
+            }
+            .pp-modal button:hover { filter: brightness(0.95); }
+            .pp-error {
+                margin-top: 10px;
+                min-height: 18px;
+                color: #ff8a8a;
+                font-size: 13px;
+            }
         </style>
     </head>
     <body>
-        <!-- VIDEO HEADER -->
         <div class="header">
             <video autoplay muted loop playsinline class="header-video">
                 <source src="https://i.imgur.com/ity2XJw.mp4" type="video/mp4">
@@ -733,14 +961,14 @@ async def root():
                 <p>Professional Forecasting & Execution Platform</p>
             </div>
         </div>
-        
+
         <div class="container">
             <h2 class="subtitle">Choose Your Tool</h2>
             <p class="description">
-                A complete forecasting solution: Generate multi-model AI predictions with Predict, 
+                A complete forecasting solution: Generate multi-model AI predictions with Predict,
                 then automate execution with Pour. The perfect one-two punch for data-driven forecasting.
             </p>
-            
+
             <div class="app-cards">
                 <div class="app-card">
                     <img src="https://i.imgur.com/uFQzEoN.png" alt="Predict Logo" style="width: 150px; height: 150px; margin: 10px 0;">
@@ -748,7 +976,7 @@ async def root():
                     <p>Multi-model forecasting powered by advanced algorithims and AI models. Choose from 8 different forecasting models to predict future sales.</p>
                     <a href="/predict">Launch Predict →</a>
                 </div>
-                
+
                 <div class="app-card">
                     <img src="https://i.imgur.com/cNL5gwd.png" alt="Pour Logo" style="width: 150px; height: 150px; margin: 10px 0;">
                     <h2>Pour</h2>
@@ -757,9 +985,28 @@ async def root():
                 </div>
             </div>
         </div>
+
+        <!-- LOGIN OVERLAY INJECTED ONLY WHEN NOT LOGGED IN -->
+        <!-- __LOGIN_OVERLAY__ -->
+
+        <!-- LOGOUT BUTTON INJECTED ONLY WHEN LOGGED IN -->
+        <!-- __LOGOUT_BUTTON__ -->
     </body>
     </html>
-    """)
+    """
+
+    if logged_in:
+        return HTMLResponse(
+            content=page_html
+            .replace("<!-- __LOGIN_OVERLAY__ -->", "")
+            .replace("<!-- __LOGOUT_BUTTON__ -->", logout_button)
+        )
+
+    return HTMLResponse(
+        content=page_html
+        .replace("<!-- __LOGIN_OVERLAY__ -->", login_overlay)
+        .replace("<!-- __LOGOUT_BUTTON__ -->", "")
+    )
 
 @app.get("/predict")
 async def serve_predict():
@@ -1427,130 +1674,99 @@ async def create_forecast(
 # =====================================================================
 
 @app.post("/api/pour/upload")
-async def upload_pour_file(file: UploadFile = File(...)):
+async def upload_pour_file(request: Request, file: UploadFile = File(...)):
+    _require_login(request)
     """Upload Excel file for Pour app"""
     global uploaded_pour_data
-    
+
     try:
         print(f"\n=== UPLOAD DEBUG ===")
         print(f"Filename: {file.filename}")
-        
+
         contents = await file.read()
         df = pd.read_excel(BytesIO(contents))
-        
+
         print(f"Original columns: {list(df.columns)}")
         print(f"Original shape: {df.shape}")
-        
+
         # Clean data
         df.columns = df.columns.str.strip().str.lower()
-        
         print(f"Cleaned columns: {list(df.columns)}")
-        
-        # Check if required columns exist (accept both "sku id" and "pdcn")
-        required_columns = ['week number', 'description', 'final forecast']
-        missing_columns = [col for col in required_columns if col not in df.columns]
 
-        # Check for ID column (accept either sku id or pdcn)
-        if 'sku id' not in df.columns and 'pdcn' not in df.columns:
-            missing_columns.append('sku id or pdcn')
+        # Required cols
+        required_columns = ["week number", "description", "final forecast"]
+        missing_columns = [c for c in required_columns if c not in df.columns]
+
+        # ID column can be sku id or pdcn
+        if "sku id" not in df.columns and "pdcn" not in df.columns:
+            missing_columns.append("sku id or pdcn")
 
         if missing_columns:
-            print(f"ERROR: Missing columns: {missing_columns}")
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Missing required columns: {', '.join(missing_columns)}"
-            )
-        
-        print(f"Rows before filter: {len(df)}")
-        
-        # Filter out past dates only
-        df = df[df['week number'] != "Past Date"]
-        print(f"Rows after 'Past Date' filter: {len(df)}")
-        
-        # Rename sku id to pdcn for consistency with rest of code
-        df = df.rename(columns={'sku id': 'pdcn'})
-        
-        # Select only needed columns
-        df = df[['pdcn', 'description', 'final forecast', 'week number']]
-        
+            raise HTTPException(status_code=400, detail=f"Missing required columns: {', '.join(missing_columns)}")
+
+        # Filter out past dates (case-insensitive safety)
+        df["week number"] = df["week number"].astype(str)
+        df = df[df["week number"].str.lower() != "past date"]
+
+        # Normalize ID column name to pdcn
+        if "pdcn" not in df.columns and "sku id" in df.columns:
+            df = df.rename(columns={"sku id": "pdcn"})
+
+        # Keep only needed columns
+        df = df[["pdcn", "description", "final forecast", "week number"]]
+
         if df.empty:
-            print("ERROR: No data after filtering")
-            raise HTTPException(
-                status_code=400,
-                detail="No valid forecast data found in file"
-            )
-        
+            raise HTTPException(status_code=400, detail="No valid forecast data found in file")
+
         uploaded_pour_data = df
-        
+
         # Create display options
-        df['pdcn'] = df['pdcn'].astype(str)
-        df['description'] = df['description'].astype(str)
-        df['display_label'] = df['pdcn'] + " (" + df['description'] + ")"
-        unique_options = df[['pdcn', 'display_label']].drop_duplicates().sort_values('display_label')
-        
-        print(f"SUCCESS: {len(unique_options)} unique items found")
-        print(f"First few PDCNs: {unique_options['pdcn'].head().tolist()}")
-        print("=== END DEBUG ===\n")
-        
-        return {
-            "status": "success",
-            "items": unique_options.to_dict('records')
-        }
-    
+        df["pdcn"] = df["pdcn"].astype(str)
+        df["description"] = df["description"].astype(str)
+        df["display_label"] = df["pdcn"] + " (" + df["description"] + ")"
+        unique_options = df[["pdcn", "display_label"]].drop_duplicates().sort_values("display_label")
+
+        return {"status": "success", "items": unique_options.to_dict("records")}
+
     except HTTPException:
         raise
     except Exception as e:
-        print(f"EXCEPTION: {str(e)}")
-        print(f"Exception type: {type(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
-        
-        uploaded_pour_data = df
-    
+
+
 @app.get("/api/pour/get-forecast")
-async def get_forecast_for_pdcn(pdcn: str):
-    """Get forecast values for a specific PDCN (called by Automa)"""
+async def get_forecast(request: Request, pdcn: str):
+    _require_login(request)
+    """Get forecast values for a specific PDCN (called by extension/automa)"""
     global uploaded_pour_data
-    
+
     if uploaded_pour_data is None:
-        return {
-            "status": "error",
-            "message": "No forecast data uploaded. Please upload a file first."
-        }
-    
-    # Filter data for the PDCN
-    filtered_df = uploaded_pour_data[uploaded_pour_data['pdcn'] == pdcn]
-    
+        return {"status": "error", "message": "No forecast data uploaded. Please upload a file first."}
+
+    # Ensure pdcn is compared as string
+    uploaded_pour_data["pdcn"] = uploaded_pour_data["pdcn"].astype(str)
+    pdcn = str(pdcn)
+
+    filtered_df = uploaded_pour_data[uploaded_pour_data["pdcn"] == pdcn]
     if filtered_df.empty:
-        return {
-            "status": "error", 
-            "message": f"PDCN {pdcn} not found in forecast data"
-        }
-    
-    # Filter OUT "past date" rows - only keep numeric week numbers
-    filtered_df = filtered_df[filtered_df['week number'] != "past date"]
-    
-    # Convert week number to numeric and filter for weeks 0-12
-    filtered_df['week number'] = pd.to_numeric(filtered_df['week number'], errors='coerce')
-    filtered_df = filtered_df[filtered_df['week number'].between(0, 12)]
-    
-    # Sort by week number (0, 1, 2, 3... 12)
-    filtered_df = filtered_df.sort_values(by='week number')
-    
-    # Get the forecast values as integers
-    forecast_values = []
-    for value in filtered_df['final forecast']:
-        whole_number = int(round(value))
-        forecast_values.append(whole_number)
-    
-    # Safety check: should have exactly 13 values (weeks 0-12)
+        return {"status": "error", "message": f"PDCN {pdcn} not found in forecast data"}
+
+    # Convert week number safely + only keep weeks 0-12
+    filtered_df = filtered_df.copy()
+    filtered_df["week number"] = pd.to_numeric(filtered_df["week number"], errors="coerce")
+    filtered_df = filtered_df[filtered_df["week number"].between(0, 12)]
+    filtered_df = filtered_df.sort_values(by="week number")
+
+    forecast_values = [int(round(v)) for v in filtered_df["final forecast"].tolist()]
+
     if len(forecast_values) != 13:
         return {
             "status": "error",
-            "message": f"Expected 13 weeks (0-12), but found {len(forecast_values)} weeks for PDCN {pdcn}"
+            "message": f"Expected 13 weeks (0-12), but found {len(forecast_values)} weeks for PDCN {pdcn}",
         }
-    
+
     return {
         "status": "success",
         "pdcn": pdcn,
@@ -1567,7 +1783,7 @@ async def get_forecast_for_pdcn(pdcn: str):
         "week10": forecast_values[10],
         "week11": forecast_values[11],
         "week12": forecast_values[12],
-        "count": len(forecast_values),
+        "count": 13,
     }
 
 @app.get("/api/models")
