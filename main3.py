@@ -948,12 +948,47 @@ async def root(request: Request):
                 color: #ff8a8a;
                 font-size: 13px;
             }
+            /* Footer */
+            .pp-footer{
+            margin-top: 60px;
+            padding: 20px 0 30px 0;
+            text-align: center;
+            font-size: 13px;
+            color: #ccc;
+            }
+
+            .pp-footer-line{
+            width: 100%;
+            height: 3px;
+            background: #EBBB40;
+            margin-bottom: 14px;
+            }
+
+            .pp-footer-links{
+            margin-bottom: 8px;
+            }
+
+            .pp-footer-links a{
+            color: #EBBB40;
+            text-decoration: none;
+            font-weight: 700;
+            margin: 0 6px;
+            }
+
+            .pp-footer-links a:hover{
+            text-decoration: underline;
+            }
+
+            .pp-footer-copy{
+            font-size: 12px;
+            opacity: 0.75;
+            }
         </style>
     </head>
     <body>
         <div class="header">
             <video autoplay muted loop playsinline class="header-video">
-                <source src="https://i.imgur.com/ity2XJw.mp4" type="video/mp4">
+                <source src="/static/beer-header.mp4" type="video/mp4">
             </video>
             <div class="header-content">
                 <img src="https://i.imgur.com/Bf1hNE0.png" alt="Predict & Pour Logo" width="150" style="margin-bottom: 10px;">
@@ -991,6 +1026,25 @@ async def root(request: Request):
 
         <!-- LOGOUT BUTTON INJECTED ONLY WHEN LOGGED IN -->
         <!-- __LOGOUT_BUTTON__ -->
+        <!-- FOOTER -->
+        <div class="pp-footer">
+        <div class="pp-footer-line"></div>
+
+        <div class="pp-footer-links">
+            <a href="https://example.com/support" target="_blank">Support</a>
+            <span>•</span>
+            <a href="https://example.com/faqs" target="_blank">FAQs &amp; Resources</a>
+        </div>
+
+        <div class="pp-footer-copy">
+            © <span id="ppYear"></span> Predict &amp; Pour LLC. All rights reserved.
+        </div>
+        </div>
+
+        <script>
+        // Auto-update year
+        document.getElementById("ppYear").textContent = new Date().getFullYear();
+        </script>
     </body>
     </html>
     """
