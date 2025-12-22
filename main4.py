@@ -817,7 +817,7 @@ async def root(request: Request):
             }
 
             .app-card {
-                background: url("/static/wood-texture.png") center center;
+                background: url("/static/wood-texture.jpg") center center;
                 background-size: cover;
                 border: 3px solid #EBBB40;
                 border-radius: 12px;
