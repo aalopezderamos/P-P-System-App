@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>About — Predict &amp; Pour</title>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #000;
+      color: #fff;
+      position: relative;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: url("/static/grain.png") repeat;
+      opacity: 0.18;
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    /* Header (matches your theme) */
+    .header {
+      position: relative;
+      overflow: hidden;
+      color: #EBBB40;
+      padding: 20px;
+      text-align: center;
+      border-bottom: 3px solid #EBBB40;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 150px;
+    }
+
+    .header-video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 0;
+    }
+
+    .header-content {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+
+    .header-content img {
+      width: 140px;
+      margin-bottom: 10px;
+    }
+
+    .header-content h1 {
+      -webkit-text-stroke: 4px #000;
+      paint-order: stroke fill;
+      margin: 10px 0;
+      font-size: 44px;
+    }
+
+    .header-content p {
+      -webkit-text-stroke: 3px #000;
+      paint-order: stroke fill;
+      margin: 0;
+      font-size: 22px;
+    }
+
+    /* Top nav (Home only) */
+    .top-nav {
+      max-width: 1000px;
+      margin: 18px auto 0 auto;
+      padding: 0 20px;
+      display: flex;
+      justify-content: flex-start;
+    }
+
+    .btn-home {
+      display: inline-block;
+      background: transparent;
+      border: 2px solid #EBBB40;
+      color: #EBBB40;
+      text-decoration: none;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-weight: 900;
+      font-size: 14px;
+      transition: transform 0.15s, box-shadow 0.15s, background 0.15s, color 0.15s;
+    }
+
+    .btn-home:hover {
+      background: #EBBB40;
+      color: #000;
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.45);
+    }
+
+    /* Main */
+    .container {
+      max-width: 1000px;
+      margin: 22px auto 0 auto;
+      padding: 0 20px;
+    }
+
+    .card {
+      background: url("/static/wood-texture.png") center center;
+      background-size: cover;
+      border: 3px solid #EBBB40;
+      border-radius: 14px;
+      padding: 34px 28px;
+      box-shadow: 0 25px 80px rgba(0,0,0,0.6);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 0;
+    }
+
+    .card-content {
+      position: relative;
+      z-index: 1;
+    }
+
+    .section-title {
+      color: #EBBB40;
+      font-size: 28px;
+      margin: 0 0 12px 0;
+      font-weight: 900;
+    }
+
+    .subhead {
+      margin: 0 0 22px 0;
+      color: #ddd;
+      font-size: 16px;
+      line-height: 1.6;
+      max-width: 860px;
+    }
+
+    /* About layout */
+    .about-grid {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 22px;
+      align-items: start;
+      margin-top: 18px;
+    }
+
+    .headshot {
+      border: 2px solid #EBBB40;
+      border-radius: 14px;
+      overflow: hidden;
+      background: rgba(0,0,0,0.6);
+      box-shadow: 0 10px 26px rgba(0,0,0,.45);
+    }
+
+    .headshot .placeholder {
+      width: 100%;
+      aspect-ratio: 4 / 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #EBBB40;
+      font-weight: 900;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      padding: 10px;
+      text-align: center;
+    }
+
+    .body-text {
+      color: #f0f0f0;
+      font-size: 16px;
+      line-height: 1.75;
+      margin: 0;
+    }
+
+    .callouts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 22px;
+    }
+
+    .callout {
+      border: 2px solid #EBBB40;
+      border-radius: 12px;
+      padding: 16px 16px;
+      background: rgba(0,0,0,0.55);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+    }
+
+    .callout h3 {
+      margin: 0 0 8px 0;
+      color: #EBBB40;
+      font-size: 16px;
+      font-weight: 900;
+    }
+
+    .callout p {
+      margin: 0;
+      color: #ddd;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    /* Footer (your standard) */
+    .pp-footer{
+      margin-top: 60px;
+      padding: 20px 0 30px 0;
+      text-align: center;
+      font-size: 13px;
+      color: #ccc;
+    }
+
+    .pp-footer-line{
+      width: 100%;
+      height: 3px;
+      background: #EBBB40;
+      margin-bottom: 14px;
+    }
+
+    .pp-footer-links{
+      margin-bottom: 8px;
+    }
+
+    .pp-footer-links a{
+      color: #EBBB40;
+      text-decoration: none;
+      font-weight: 700;
+      margin: 0 6px;
+    }
+
+    .pp-footer-links a:hover{
+      text-decoration: underline;
+    }
+
+    .pp-footer-copy{
+      font-size: 12px;
+      opacity: 0.75;
+    }
+
+    /* Responsive */
+    @media (max-width: 720px){
+      .about-grid{
+        grid-template-columns: 1fr;
+      }
+      .headshot{
+        max-width: 260px;
+      }
+      .callouts{
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- HEADER -->
+  <div class="header">
+    <video autoplay muted loop playsinline class="header-video">
+      <source src="/static/beer-header.mp4" type="video/mp4">
+    </video>
+    <div class="header-content">
+      <img src="/static/pour-logo.png" alt="Predict &amp; Pour Logo">
+      <h1>About Predict &amp; Pour</h1>
+      <p>Forecasting, automation, and execution—built for the beer industry.</p>
+    </div>
+  </div>
+
+  <!-- NAV -->
+  <div class="top-nav">
+    <a class="btn-home" href="/">← Back to Home</a>
+  </div>
+
+  <!-- MAIN -->
+  <div class="container">
+    <div class="card">
+      <div class="card-content">
+
+        <h2 class="section-title">Our Mission</h2>
+        <p class="subhead">
+          Predict &amp; Pour exists to help teams move from forecasting to execution with clarity and confidence.
+          We combine practical forecasting workflows with automation that reduces manual work, improves consistency,
+          and helps organizations make faster, more reliable decisions.
+        </p>
+
+        <h2 class="section-title">About the Company</h2>
+        <p class="body-text">
+          Predict &amp; Pour is a forecasting and execution platform designed for teams that operate in fast-moving
+          distribution environments. The system brings together model-driven forecasting (Predict) with streamlined
+          execution tools (Pour) to help planners and operators reduce friction between planning and action.
+          <br><br>
+          Our approach is built around real-world workflows—clean inputs, transparent outputs, and automation where it
+          matters. The goal is simple: reduce the time spent on repetitive tasks, increase confidence in the numbers,
+          and make it easier to execute forecasts accurately inside the tools your team already uses.
+        </p>
+
+        <h2 class="section-title" style="margin-top:28px;">About Me</h2>
+
+        <div class="about-grid">
+          <div class="headshot">
+            <img
+              src="/static/headshot.jpg"
+              alt="Headshot"
+              style="
+                width: 100%;
+                display: block;
+                object-fit: cover;
+              "
+            />
+          </div>
+
+          <div>
+            <p class="body-text">
+              I’m <b>Aaron Lopez</b>, the creator of Predict &amp; Pour. I built this system to solve a problem I
+              experienced firsthand: forecasting often requires great analysis, but execution still depends on tedious,
+              error-prone manual steps. Predict &amp; Pour is designed to close that gap.
+              <br><br>
+              I bring over a decade of experience in procurement management, having started my career in the purchasing field at just 19 years old. With a strong foundation in manufacturing, I transitioned into the beverage industry in 2022 as Procurement Manager for Silver Eagle Beverages in San Antonio, supporting a territory that delivers more than 16 million cases annually.
+              <br><br>
+              Driven by a Six Sigma and efficiency-first mindset, I’ve consistently challenged legacy processes and questioned how things should work. After stepping into beverage procurement, it became clear that many of the industry’s biggest bottlenecks, including ordering, inventory flow, and sales forecasting, were still being managed with outdated tools and reactive decision-making.
+              <br><br>
+              That realization sparked a new passion for building solutions. I began pairing my operational background with coding and data analytics to create modern, scalable tools designed to bring clarity, speed, and accuracy to procurement and forecasting. What started as an effort to solve my own day-to-day challenges has grown into a broader mission to help the beverage industry and procurement teams operate smarter, faster, and with greater confidence.
+              <br><br>
+              Today, my focus is on building practical technology grounded in real-world operations, shaped by firsthand experience and designed to fit real business constraints while pushing the industry forward.
+              <br><br>
+              If you’d like to connect, collaborate, or learn more about the platform, use the links below or reach out
+              through your preferred support channel.
+            </p>
+          </div>
+        </div>
+
+        <div class="callouts">
+          <div class="callout">
+            <h3>What We Value</h3>
+            <p>
+              Practical systems, clear workflows, and measurable outcomes that are built to support teams in their decision-making & ordering.
+            </p>
+          </div>
+          <div class="callout">
+            <h3>How We Help</h3>
+            <p>
+              Cleaner forecasting inputs, faster execution, fewer manual errors, and an efficient process teams can trust.
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="pp-footer">
+      <div class="pp-footer-line"></div>
+
+      <div class="pp-footer-links">
+      <a href="/static/about.html">About</a>
+      <span>•</span>
+      <a href="mailto:Aaron@predictandpour.com">Support</a>
+      <span>•</span>
+      <a href="/static/faqs.html">FAQs &amp; Resources</a>
+      </div>
+
+      <div class="pp-footer-copy">
+        © <span id="ppYear"></span> Predict &amp; Pour LLC. All rights reserved.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById("ppYear").textContent = new Date().getFullYear();
+  </script>
+
+</body>
+</html>

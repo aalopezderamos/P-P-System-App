@@ -20,7 +20,7 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: url('https://i.imgur.com/cdzKb9r.png') repeat;
+      background: url("/static/grain.png") repeat;
       opacity: 0.18;
       z-index: -1;
       pointer-events: none;
@@ -56,14 +56,14 @@
       justify-content: center;
     }
     .header h1 {
-      -webkit-text-stroke: 5px #000;
-      text-stroke: 5px #000;
+      -webkit-text-stroke: 5px #000000;
+      text-stroke: 5px #000000;
       paint-order: stroke fill;
       margin: 0;
     }
     .header p {
-      -webkit-text-stroke: 3px #000;
-      text-stroke: 3px #000;
+      -webkit-text-stroke: 3px #000000;
+      text-stroke: 3px #000000;
       paint-order: stroke fill;
       margin: 0;
       font-size: 22px;
@@ -90,7 +90,7 @@
 
     /* POUR CONTENT — styled to match Predict wood panels */
     .panel {
-      background: url('https://static.vecteezy.com/system/resources/previews/027/815/346/large_2x/dark-wood-background-texture-rustic-wooden-floor-textured-backdrop-free-photo.jpg') center center;
+      background: url("/static/wood-texture.png") center center;
       background-size: cover;
       padding: 20px;
       border-radius: 8px;
@@ -225,7 +225,7 @@
     </video>
 
     <div class="header-content">
-      <img src="https://i.imgur.com/cNL5gwd.png" alt="Predict & Pour Logo" width="100" style="margin-right: 15px;">
+      <img src="/static/pp-logo.png" alt="Predict & Pour Logo" width="100" style="margin-right: 15px;">
       <div>
         <h1>Predict & Pour - Importing App</h1>
         <p>OnePortal Import Extension</p>
@@ -237,12 +237,12 @@
     <!-- NAVIGATION (matches Predict) -->
     <div style="margin: 10px 0; padding: 2px 0; border-bottom: 1px solid #333;">
       <a href="/" class="nav-link">
-        <img src="https://i.imgur.com/Bf1hNE0.png" alt="Home" style="height: 20px; vertical-align: middle; margin-right: 5px;">
+        <img src="/static/pp-logo.png" alt="Home" style="height: 20px; vertical-align: middle; margin-right: 5px;">
         Back to Home
       </a>
       |
       <a href="/predict" class="nav-link">
-        <img src="https://i.imgur.com/uFQzEoN.png" alt="Predict" style="height: 20px; vertical-align: middle; margin-right: 5px;">
+        <img src="/static/predict-logo.png" alt="Predict" style="height: 20px; vertical-align: middle; margin-right: 5px;">
         Go to Predict
       </a>
     </div>
@@ -282,9 +282,11 @@
       <div class="pp-footer-line"></div>
 
       <div class="pp-footer-links">
-        <a href="https://example.com/support" target="_blank">Support</a>
+        <a href="/static/about.html">About</a>
         <span>•</span>
-        <a href="https://example.com/faqs" target="_blank">FAQs &amp; Resources</a>
+        <a href="mailto:Aaron@predictandpour.com">Support</a>
+        <span>•</span>
+        <a href="/static/faqs.html">FAQs &amp; Resources</a>
       </div>
 
       <div class="pp-footer-copy">

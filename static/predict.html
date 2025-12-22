@@ -18,7 +18,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: url('https://i.imgur.com/cdzKb9r.png') repeat;
+            background: url("/static/grain.png") repeat;
             opacity: 0.18;
             z-index: -1;
             pointer-events: none;
@@ -65,7 +65,7 @@
             font-size: 22px;
         }
         .preset-section {
-            background: url('https://static.vecteezy.com/system/resources/previews/027/815/346/large_2x/dark-wood-background-texture-rustic-wooden-floor-textured-backdrop-free-photo.jpg') center center;
+            background: url("/static/wood-texture.png") center center;
             background-size: cover;
             padding: 20px;
             border-radius: 8px;
@@ -116,8 +116,15 @@
         }
         .preset-option input[type="radio"]:checked + .preset-card {
             border-color: #EBBB40;
-            background: #fffef5;
-            box-shadow: 0 0 10px rgba(235, 187, 64, 0.3);
+            background: linear-gradient(
+                160deg,
+                rgba(235, 187, 64, 0.40),
+                rgba(255, 255, 255, 0.95)
+            );
+            box-shadow:
+                0 0 0 3px rgba(235, 187, 64, 0.35),
+                0 15px 35px rgba(235, 187, 64, 0.45);
+            transform: scale(1.03);
         }
         .preset-card:hover {
             border-color: #EBBB40;
@@ -190,7 +197,7 @@
         }
         .control-group { 
             padding: 15px; 
-            background: url('https://static.vecteezy.com/system/resources/previews/027/815/346/large_2x/dark-wood-background-texture-rustic-wooden-floor-textured-backdrop-free-photo.jpg') center center;
+            background: url("/static/wood-texture.png") center center;
             background-size: cover;
             border-radius: 5px;
             border: 2px solid #EBBB40;
@@ -209,7 +216,7 @@
             margin: 30px 0; 
         }
         .model-card { 
-            background: url('https://static.vecteezy.com/system/resources/previews/027/815/346/large_2x/dark-wood-background-texture-rustic-wooden-floor-textured-backdrop-free-photo.jpg') center center;
+            background: url("/static/wood-texture.png") center center;
             background-size: cover;
             padding: 20px; 
             border-radius: 8px; 
@@ -346,7 +353,7 @@
             <source src="/static/beer-header.mp4" type="video/mp4">
         </video>
         <div class="header-content">
-            <img src="https://i.imgur.com/uFQzEoN.png" alt="Predict & Pour Logo" width="100" style="margin-right: 15px;">
+            <img src="/static/pp-logo.png" alt="Predict & Pour Logo" width="100" style="margin-right: 15px;">
             <div>
                 <h1>Predict & Pour - Forecasting App</h1>
                 <p>Multi-Model Forecasting System</p>
@@ -358,11 +365,11 @@
         <!-- NAVIGATION -->
         <div style="margin: 10px 0; padding: 2px 0; border-bottom: 1px solid #333;">
             <a href="/" class="nav-link">
-                <img src="https://i.imgur.com/Bf1hNE0.png" alt="Home" style="height: 20px; vertical-align: middle; margin-right: 5px;">
+                <img src="/static/pp-logo.png" alt="Home" style="height: 20px; vertical-align: middle; margin-right: 5px;">
                 Back to Home
             </a> | 
             <a href="/pour" class="nav-link">
-                <img src="https://i.imgur.com/cNL5gwd.png" alt="Pour" style="height: 20px; vertical-align: middle; margin-right: 5px;">
+                <img src="/static/pour-logo.png" alt="Pour" style="height: 20px; vertical-align: middle; margin-right: 5px;">
                 Go to Pour
             </a>
         </div>
@@ -402,7 +409,7 @@
                 <label class="preset-option">
                     <input type="radio" name="preset" value="quick" checked>
                     <div class="preset-card">
-                        <img src="https://i.imgur.com/CzS9b4r.png" alt="Beer" class="preset-img">
+                        <img src="/static/lager.png" alt="Lagers" class="preset-img">
                         <span class="preset-name">"Lagers"</span>
                         <span class="preset-desc">Straightforward, Reliable, Everyday Choice<br><span style="font-style: italic; font-size: 12px;">(House Lager, Heritage Blend, Small Batch Classic)</span></span>
                     </div>
@@ -411,7 +418,7 @@
                 <label class="preset-option">
                     <input type="radio" name="preset" value="solid">
                     <div class="preset-card">
-                        <img src="https://i.imgur.com/e7WLRuv.png" alt="Beer" class="preset-img">
+                        <img src="/static/ale.png" alt="Ales" class="preset-img">
                         <span class="preset-name">"Ales"</span>
                         <span class="preset-desc">More Character & Depth, Still Approachable<br><span style="font-style: italic; font-size: 12px;">(House Lager, Small Batch Classic, West Coast IPA)</span></span>
                     </div>
@@ -420,7 +427,7 @@
                 <label class="preset-option">
                     <input type="radio" name="preset" value="larger">
                     <div class="preset-card">
-                        <img src="https://i.imgur.com/Gn7Nn9f.png" alt="Beer" class="preset-img">
+                        <img src="/static/ipa.png" alt="IPAs" class="preset-img">
                         <span class="preset-name">"IPAs"</span>
                         <span class="preset-desc">Bold, Complex Flavor Profile<br><span style="font-style: italic; font-size: 12px;">(House Lager, Heritage Blend, West Coast IPA, Mind Melt Double IPA)</span></span>
                     </div>
@@ -429,7 +436,7 @@
                 <label class="preset-option">
                     <input type="radio" name="preset" value="all">
                     <div class="preset-card">
-                        <img src="https://i.imgur.com/nyJUlki.png" alt="Beer" class="preset-img">
+                        <img src="/static/stout.png" alt="Stouts" class="preset-img">
                         <span class="preset-name">"Stouts"</span>
                         <span class="preset-desc">Deepest Flavors, Robust, Full Featured<br><span style="font-style: italic; font-size: 12px;">(every available forecasting model)</span></span>
                     </div>
@@ -768,9 +775,11 @@
         <div class="pp-footer-line"></div>
 
         <div class="pp-footer-links">
-            <a href="https://example.com/support" target="_blank">Support</a>
-            <span>•</span>
-            <a href="https://example.com/faqs" target="_blank">FAQs &amp; Resources</a>
+        <a href="/static/about.html">About</a>
+        <span>•</span>
+        <a href="mailto:Aaron@predictandpour.com">Support</a>
+        <span>•</span>
+        <a href="/static/faqs.html">FAQs &amp; Resources</a>
         </div>
 
         <div class="pp-footer-copy">

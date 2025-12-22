@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>FAQs &amp; Resources — Predict &amp; Pour</title>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #000;
+      color: #fff;
+      position: relative;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: url('https://i.imgur.com/cdzKb9r.png') repeat;
+      opacity: 0.18;
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    /* Header */
+    .header {
+      position: relative;
+      overflow: hidden;
+      color: #EBBB40;
+      padding: 20px;
+      text-align: center;
+      border-bottom: 3px solid #EBBB40;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 150px;
+    }
+
+    .header-video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 0;
+    }
+
+    .header-content {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+
+    .header-content img {
+      width: 140px;
+      margin-bottom: 10px;
+    }
+
+    .header-content h1 {
+      -webkit-text-stroke: 4px #000;
+      paint-order: stroke fill;
+      margin: 10px 0;
+      font-size: 44px;
+    }
+
+    .header-content p {
+      -webkit-text-stroke: 3px #000;
+      paint-order: stroke fill;
+      margin: 0;
+      font-size: 22px;
+    }
+
+    /* Nav (Home only) */
+    .top-nav {
+      max-width: 1000px;
+      margin: 18px auto 0 auto;
+      padding: 0 20px;
+      display: flex;
+      justify-content: flex-start;
+    }
+
+    .btn-home {
+      display: inline-block;
+      background: transparent;
+      border: 2px solid #EBBB40;
+      color: #EBBB40;
+      text-decoration: none;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-weight: 900;
+      font-size: 14px;
+      transition: transform 0.15s, box-shadow 0.15s, background 0.15s, color 0.15s;
+    }
+
+    .btn-home:hover {
+      background: #EBBB40;
+      color: #000;
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.45);
+    }
+
+    /* Main */
+    .container {
+      max-width: 1000px;
+      margin: 22px auto 0 auto;
+      padding: 0 20px;
+    }
+
+    .card {
+      background: url('https://static.vecteezy.com/system/resources/previews/027/815/346/large_2x/dark-wood-background-texture-rustic-wooden-floor-textured-backdrop-free-photo.jpg');
+      background-size: cover;
+      border: 3px solid #EBBB40;
+      border-radius: 14px;
+      padding: 34px 28px;
+      box-shadow: 0 25px 80px rgba(0,0,0,0.6);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 0;
+    }
+
+    .card-content {
+      position: relative;
+      z-index: 1;
+    }
+
+    .section-title {
+      color: #EBBB40;
+      font-size: 28px;
+      margin: 0 0 10px 0;
+      font-weight: 900;
+    }
+
+    .subhead {
+      margin: 0 0 18px 0;
+      color: #ddd;
+      font-size: 16px;
+      line-height: 1.6;
+      max-width: 900px;
+    }
+
+    /* FAQ layout */
+    .faq-list {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    details.faq {
+      border: 2px solid #EBBB40;
+      border-radius: 12px;
+      background: rgba(0,0,0,0.55);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+      overflow: hidden;
+    }
+
+    details.faq summary {
+      cursor: pointer;
+      padding: 14px 14px;
+      list-style: none;
+      font-weight: 900;
+      color: #EBBB40;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      user-select: none;
+    }
+
+    /* Remove default marker */
+    details.faq summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .chev {
+      font-weight: 900;
+      color: #EBBB40;
+      opacity: 0.95;
+      transition: transform 0.15s ease;
+    }
+
+    details[open] .chev {
+      transform: rotate(90deg);
+    }
+
+    .faq-body {
+      padding: 0 14px 14px 14px;
+      color: #eee;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .note {
+      margin-top: 22px;
+      padding: 14px;
+      border: 2px dashed rgba(235,187,64,0.8);
+      border-radius: 12px;
+      background: rgba(0,0,0,0.45);
+      color: #ddd;
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    .note b { color: #EBBB40; }
+
+    /* Footer */
+    .pp-footer{
+      margin-top: 60px;
+      padding: 20px 0 30px 0;
+      text-align: center;
+      font-size: 13px;
+      color: #ccc;
+    }
+
+    .pp-footer-line{
+      width: 100%;
+      height: 3px;
+      background: #EBBB40;
+      margin-bottom: 14px;
+    }
+
+    .pp-footer-links{
+      margin-bottom: 8px;
+    }
+
+    .pp-footer-links a{
+      color: #EBBB40;
+      text-decoration: none;
+      font-weight: 700;
+      margin: 0 6px;
+    }
+
+    .pp-footer-links a:hover{
+      text-decoration: underline;
+    }
+
+    .pp-footer-copy{
+      font-size: 12px;
+      opacity: 0.75;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- HEADER -->
+  <div class="header">
+    <video autoplay muted loop playsinline class="header-video">
+      <source src="/static/beer-header.mp4" type="video/mp4">
+    </video>
+    <div class="header-content">
+      <img src="https://i.imgur.com/Bf1hNE0.png" alt="Predict &amp; Pour Logo">
+      <h1>FAQs &amp; Resources</h1>
+      <p>Quick answers to common questions.</p>
+    </div>
+  </div>
+
+  <!-- NAV -->
+  <div class="top-nav">
+    <a class="btn-home" href="/">← Back to Home</a>
+  </div>
+
+  <!-- MAIN -->
+  <div class="container">
+    <div class="card">
+      <div class="card-content">
+
+        <h2 class="section-title">Frequently Asked Questions</h2>
+        <p class="subhead">
+          These are starter FAQs to help users get up and running. Feel free to edit the wording,
+          add screenshots, and tailor the questions to your workflow.
+        </p>
+
+        <div class="faq-list">
+
+          <details class="faq">
+            <summary>
+              <span>What is Predict &amp; Pour?</span>
+              <span class="chev">›</span>
+            </summary>
+            <div class="faq-body">
+              Predict generates forecast outputs using multiple forecasting models. Pour is a Chrome extension that helps
+              apply those forecasts inside OnePortal quickly and consistently.
+            </div>
+          </details>
+
+          <details class="faq">
+            <summary>
+              <span>Do I need to upload forecast files to the website?</span>
+              <span class="chev">›</span>
+            </summary>
+            <div class="faq-body">
+              For the current workflow, forecast files are uploaded directly inside the Pour Chrome extension.
+              The extension stores your data locally (on your machine) and uses it when you click the POUR button in OnePortal.
+            </div>
+          </details>
+
+          <details class="faq">
+            <summary>
+              <span>How does the Pour extension know what product I’m viewing?</span>
+              <span class="chev">›</span>
+            </summary>
+            <div class="faq-body">
+              The extension reads the current product’s PDCN from the OnePortal page and finds the matching row in your uploaded file.
+              Then it fills Week 0–12 fields automatically.
+            </div>
+          </details>
+
+          <details class="faq">
+            <summary>
+              <span>What if I click POUR and it says “No forecast found”?</span>
+              <span class="chev">›</span>
+            </summary>
+            <div class="faq-body">
+              This usually means the PDCN on the OnePortal page doesn’t exist in your uploaded forecast file
+              (or the file hasn’t been uploaded in the extension yet). Upload the latest file in the extension popup and try again.
+            </div>
+          </details>
+
+          <details class="faq">
+            <summary>
+              <span>What OnePortal page does Pour work on?</span>
+              <span class="chev">›</span>
+            </summary>
+            <div class="faq-body">
+              Pour is designed for the OnePortal forecasting pages. If the POUR button doesn’t appear, confirm you’re on the
+              correct OnePortal forecasting page and that the extension is enabled for that site. Refresh the page if needed.
+            </div>
+          </details>
+
+          <details class="faq">
+            <summary>
+              <span>How do I reset or clear the uploaded data?</span>
+              <span class="chev">›</span>
+            </summary>
+            <div class="faq-body">
+              Open the extension popup and click <b>CLEAR DATA</b>. Then upload the updated/new forecast file.
+            </div>
+          </details>
+
+          <details class="faq">
+            <summary>
+              <span>Does Predict &amp; Pour store my data in the cloud?</span>
+              <span class="chev">›</span>
+            </summary>
+            <div class="faq-body">
+              For the extension workflow, the uploaded forecast data is stored locally (your computer) in Chrome storage on your machine.
+              Predict and Pour cannot see your data, forecasts or files.
+            </div>
+          </details>
+
+        </div>
+
+        <div class="note">
+          <b>Need help?</b> Click <b>Support</b> in the footer to email us. If you’re reporting an issue, include the PDCN you were on
+          and a screenshot of the page you were importing into.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="pp-footer">
+      <div class="pp-footer-line"></div>
+
+      <div class="pp-footer-links">
+        <a href="/static/about.html">About</a>
+        <span>•</span>
+        <a href="mailto:Aaron@predictandpour.com">Support</a>
+        <span>•</span>
+        <a href="/static/faqs.html">FAQs &amp; Resources</a>
+      </div>
+
+      <div class="pp-footer-copy">
+        © <span id="ppYear"></span> Predict &amp; Pour LLC. All rights reserved.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById("ppYear").textContent = new Date().getFullYear();
+  </script>
+
+</body>
+</html>
