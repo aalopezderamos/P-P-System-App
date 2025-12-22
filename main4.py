@@ -991,7 +991,7 @@ async def root(request: Request):
                 <source src="/static/beer-header.mp4" type="video/mp4">
             </video>
             <div class="header-content">
-                src="/static/pp-logo.png" alt="Predict & Pour Logo" width="150" style="margin-bottom: 10px;">
+                <img src="/static/pp-logo.png" alt="Predict & Pour Logo" width="150" style="margin-bottom: 10px;">
                 <h1>Predict & Pour Forecasting System</h1>
                 <p>Professional Forecasting & Execution Platform</p>
             </div>
@@ -1006,14 +1006,14 @@ async def root(request: Request):
 
             <div class="app-cards">
                 <div class="app-card">
-                    src="/static/predict-logo.png" alt="Predict Logo" style="width: 150px; height: 150px; margin: 10px 0;">
+                    <img src="/static/predict-logo.png" alt="Predict Logo" style="width: 150px; height: 150px; margin: 10px 0;">
                     <h2>Predict</h2>
                     <p>Multi-model forecasting powered by advanced algorithims and AI models. Choose from 8 different forecasting models to predict future sales.</p>
                     <a href="/predict">Launch Predict →</a>
                 </div>
 
                 <div class="app-card">
-                    src="/static/pour-logo.png" alt="Pour Logo" style="width: 150px; height: 150px; margin: 10px 0;">
+                    <img src="/static/pour-logo.png" alt="Pour Logo" style="width: 150px; height: 150px; margin: 10px 0;">
                     <h2>Pour</h2>
                     <p>Automated forecast execution into OnePortal. Smart calibration and one-click import automation for your data.</p>
                     <a href="/pour">Launch Pour →</a>
