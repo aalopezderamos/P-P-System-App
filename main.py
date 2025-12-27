@@ -122,6 +122,9 @@ class ForecastConfig(BaseModel):
 # =====================================================================
 uploaded_pour_data = None
 
+# Job storage for background forecast processing
+FORECAST_JOBS = {}  # {job_id: {"status": "processing/complete/error", "result": ..., "error": ...}}
+
 # =====================================================================
 # Helper Functions (ALL FROM PREDICT APP - UNCHANGED)
 # =====================================================================
@@ -177,6 +180,9 @@ def build_future_saturdays(last_date: pd.Timestamp, horizon_weeks: int) -> pd.Da
     first_sat = next_saturday_from(last_date)
     return pd.date_range(start=first_sat, periods=horizon_weeks, freq=WEEK_FREQ)
 
+def generate_job_id() -> str:
+    """Generate a unique job ID for background tasks"""
+    return f"job_{secrets.token_hex(8)}"
 # =====================================================================
 # NEW: Dynamic Formula Builder Helper Functions
 # =====================================================================
@@ -1153,25 +1159,163 @@ def parse_ab_report(ab_report_bytes: bytes) -> Dict:
     return lookup
 
 @app.post("/api/forecast")
-async def create_forecast(
+async def start_forecast(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...), 
     config: str = Form(None),
     ab_report: Optional[UploadFile] = File(None)
 ):
-    """
-    Multi-model forecast endpoint
-    Processes CSV upload and returns Excel with forecasts
-    Optional AB report for enhanced data lookup
-    """
+    """Start a forecast job in the background and return job ID immediately"""
     try:
         # Parse configuration
         if config:
             try:
                 config_dict = json.loads(config)
-                print(f"DEBUG: Received config: {config_dict}")  # Debug log
+                print(f"DEBUG: Received config: {config_dict}")
             except json.JSONDecodeError as e:
                 print(f"ERROR: Failed to parse config JSON: {e}")
                 config_dict = {}
+        else:
+            print("WARNING: No config received, using defaults")
+            config_dict = {}
+        
+        # Read file contents
+        file_contents = await file.read()
+        
+        # Read AB report if provided
+        ab_report_contents = None
+        if ab_report:
+            ab_report_contents = await ab_report.read()
+        
+        # Generate unique job ID
+        job_id = generate_job_id()
+        
+        # Start background task
+        background_tasks.add_task(
+            process_forecast_background,
+            job_id,
+            file_contents,
+            config_dict,
+            ab_report_contents
+        )
+        
+        # Return immediately
+        return {
+            "status": "started",
+            "job_id": job_id,
+            "message": "Forecast processing started. Use /api/forecast/status/{job_id} to check progress."
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+def process_single_sku(
+    sku: str,
+    df_sku: pd.DataFrame,
+    idx: int,
+    total: int,
+    min_points: int,
+    holidays_df: pd.DataFrame,
+    horizon_weeks: int,
+    run_prophet_flag: bool,
+    run_neural_flag: bool,
+    run_sarimax_flag: bool,
+    run_xgb_flag: bool,
+    run_catboost_flag: bool,
+    run_holt_flag: bool,
+    run_lgbm_flag: bool,
+    run_nbeats_flag: bool
+) -> pd.DataFrame:
+    """
+    Process a single SKU with all selected models in parallel.
+    Returns the result DataFrame for this SKU.
+    """
+    print(f"Processing {idx}/{total} → {sku}")
+    
+    if len(df_sku) < min_points:
+        return None
+    
+    try:
+        base = pd.DataFrame({"ds": df_sku["ds"].unique()}).sort_values("ds")
+        base = base.merge(df_sku[["ds", "y"]], on="ds", how="left")
+
+        model_futures = {}
+        with ThreadPoolExecutor(max_workers=8) as executor:  # Changed from 6 to 8
+            if run_prophet_flag:
+                model_futures["house_lager"] = executor.submit(
+                    run_prophet, df_sku, holidays_df, horizon_weeks
+                )
+            if run_neural_flag:
+                model_futures["mind_melt_double_ipa"] = executor.submit(
+                    run_neuralprophet, df_sku, holidays_df, horizon_weeks
+                )
+            if run_sarimax_flag:
+                model_futures["heritage_blend"] = executor.submit(
+                    run_sarimax, df_sku, horizon_weeks
+                )
+            if run_xgb_flag:
+                model_futures["west_coast_ipa"] = executor.submit(
+                    run_xgboost, df_sku, horizon_weeks
+                )
+            if run_catboost_flag:
+                model_futures["creamy_nitro"] = executor.submit(
+                    run_catboost, df_sku, horizon_weeks
+                )
+            if run_holt_flag:
+                model_futures["small_batch_classic"] = executor.submit(
+                    run_holtwinters, df_sku, horizon_weeks
+                )
+            if run_lgbm_flag:
+                model_futures["light_hazy"] = executor.submit(
+                    run_lightgbm, df_sku, horizon_weeks
+                )
+            if run_nbeats_flag:
+                model_futures["legacy_grand_reserve"] = executor.submit(
+                    run_nbeats, df_sku, horizon_weeks
+                )
+
+        # Merge model outputs
+        for model_name, future in model_futures.items():
+            try:
+                result_df = future.result()
+                base = base.merge(result_df, on="ds", how="outer", validate="one_to_one")
+            except Exception as e:
+                print(f"Warning: {model_name} failed for {sku}: {e}")
+
+        # Compute model-specific accuracy
+        for model_prefix in [
+            "house_lager", "mind_melt_double_ipa", "heritage_blend", 
+            "west_coast_ipa", "creamy_nitro", "small_batch_classic", 
+            "light_hazy", "legacy_grand_reserve"
+        ]:
+            pred_col = f"{model_prefix}_yhat"
+            if pred_col in base.columns:
+                base[f"{model_prefix}_acc"] = base.apply(
+                    lambda r: safe_accuracy(r.get("y"), r.get(pred_col)), axis=1
+                )
+
+        base["sku_id"] = sku
+        return base
+
+    except Exception as e:
+        print(f"Warning: Error processing {sku}: {e}")
+        return None
+
+
+async def process_forecast_background(
+    job_id: str,
+    file_contents: bytes,
+    config_dict: dict,
+    ab_report_contents: Optional[bytes] = None
+):
+    """Background task to process forecast - runs async, doesn't block HTTP request"""
+    try:
+        # Mark job as processing
+        FORECAST_JOBS[job_id] = {"status": "processing", "progress": 0}
+        
+        # Parse configuration
+        if config_dict:
+            print(f"DEBUG: Received config: {config_dict}")
         else:
             print("WARNING: No config received, using defaults")
             config_dict = {}
@@ -1206,11 +1350,10 @@ async def create_forecast(
 
         # Parse AB report if provided
         ab_lookup = {}
-        if ab_report:
+        if ab_report_contents:
             try:
                 print("\n===== AB REPORT UPLOAD DETECTED =====")
-                ab_contents = await ab_report.read()
-                ab_lookup = parse_ab_report(ab_contents)
+                ab_lookup = parse_ab_report(ab_report_contents)
                 print(f"AB Report parsed successfully: {len(ab_lookup)} lookup entries created")
                 print("="*40 + "\n")
             except Exception as e:
@@ -1218,9 +1361,8 @@ async def create_forecast(
                 # Continue without AB data rather than failing
                 ab_lookup = {}
     
-        # Read uploaded file
-        contents = await file.read()
-        df = pd.read_csv(BytesIO(contents))
+        # Read uploaded file (already in bytes)
+        df = pd.read_csv(BytesIO(file_contents))
         
         # Validate required columns
         required_cols = {"sku_id", "ds", "y"}
@@ -1240,77 +1382,35 @@ async def create_forecast(
 
         detailed_rows = []
 
-        for idx, (sku, df_sku) in enumerate(df.groupby("sku_id"), start=1):
-            print(f"Processing {idx}/{total} → {sku}")  # Console logging
-
-            if len(df_sku) < min_points:
-                continue
-
-            try:
-                base = pd.DataFrame({"ds": df_sku["ds"].unique()}).sort_values("ds")
-                base = base.merge(df_sku[["ds", "y"]], on="ds", how="left")
-
-                model_futures = {}
-                with ThreadPoolExecutor(max_workers=6) as executor:
-                    if run_prophet_flag:
-                        model_futures["house_lager"] = executor.submit(
-                            run_prophet, df_sku, holidays_df, horizon_weeks
-                        )
-                    if run_neural_flag:
-                        model_futures["mind_melt_double_ipa"] = executor.submit(
-                            run_neuralprophet, df_sku, holidays_df, horizon_weeks
-                        )
-                    if run_sarimax_flag:
-                        model_futures["heritage_blend"] = executor.submit(
-                            run_sarimax, df_sku, horizon_weeks
-                        )
-                    if run_xgb_flag:
-                        model_futures["west_coast_ipa"] = executor.submit(
-                            run_xgboost, df_sku, horizon_weeks
-                        )
-                    if run_catboost_flag:
-                        model_futures["creamy_nitro"] = executor.submit(
-                            run_catboost, df_sku, horizon_weeks
-                        )
-                    if run_holt_flag:
-                        model_futures["small_batch_classic"] = executor.submit(
-                            run_holtwinters, df_sku, horizon_weeks
-                        )
-                    if run_lgbm_flag:
-                        model_futures["light_hazy"] = executor.submit(
-                            run_lightgbm, df_sku, horizon_weeks
-                        )
-                    if run_nbeats_flag:
-                        model_futures["legacy_grand_reserve"] = executor.submit(
-                            run_nbeats, df_sku, horizon_weeks
-                        )
-
-                # Merge model outputs
-                for model_name, future in model_futures.items():
-                    try:
-                        result_df = future.result()
-                        base = base.merge(result_df, on="ds", how="outer", validate="one_to_one")
-                    except Exception as e:
-                        print(f"Warning: {model_name} failed for {sku}: {e}")
-
-                # Compute model-specific accuracy
-                for model_prefix in [
-                    "house_lager", "mind_melt_double_ipa", "heritage_blend", 
-                    "west_coast_ipa", "creamy_nitro", "small_batch_classic", 
-                    "light_hazy", "legacy_grand_reserve"
-                ]:
-                    pred_col = f"{model_prefix}_yhat"
-                    if pred_col in base.columns:
-                        base[f"{model_prefix}_acc"] = base.apply(
-                            lambda r: safe_accuracy(r.get("y"), r.get(pred_col)), axis=1
-                        )
-
-                base["sku_id"] = sku
-                detailed_rows.append(base)
-
-            except Exception as e:
-                print(f"Warning: Error processing {sku}: {e}")
-                continue
+        # Process SKUs in parallel batches of 4
+        sku_groups = list(df.groupby("sku_id"))
+        total = len(sku_groups)
+        
+        print(f"\n===== PROCESSING {total} SKUs WITH PARALLEL EXECUTION =====")
+        print(f"Running up to 4 SKUs simultaneously, each with 8 models in parallel")
+        print("="*60 + "\n")
+        
+        with ThreadPoolExecutor(max_workers=4) as sku_executor:
+            # Submit all SKUs for processing
+            sku_futures = []
+            for idx, (sku, df_sku) in enumerate(sku_groups, start=1):
+                future = sku_executor.submit(
+                    process_single_sku,
+                    sku, df_sku, idx, total, min_points, holidays_df, horizon_weeks,
+                    run_prophet_flag, run_neural_flag, run_sarimax_flag,
+                    run_xgb_flag, run_catboost_flag, run_holt_flag,
+                    run_lgbm_flag, run_nbeats_flag
+                )
+                sku_futures.append((sku, future))
+            
+            # Collect results as they complete
+            for sku, future in sku_futures:
+                try:
+                    result = future.result()
+                    if result is not None:
+                        detailed_rows.append(result)
+                except Exception as e:
+                    print(f"Error collecting results for {sku}: {e}")
 
         if not detailed_rows:
             raise HTTPException(
@@ -1643,19 +1743,99 @@ async def create_forecast(
             worksheet.write(0, col_final, "Final Forecast", hdr6)
             worksheet.write(0, col_accy, "Final Accy %", hdr6)
             
-        # Return Excel file
-        output.seek(0)
-        return StreamingResponse(
-            output,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": "attachment; filename=NEST_Forecasts_MultiModel.xlsx"}
-        )
+        # Save Excel file to job results
+        excel_bytes = output.getvalue()
 
-    except HTTPException:
-        raise
+        # Validate the Excel file is not empty
+        if len(excel_bytes) == 0:
+            raise Exception("Generated Excel file is empty (0 bytes)")
+
+        print(f"Excel file generated successfully: {len(excel_bytes)} bytes")
+
+        
+        FORECAST_JOBS[job_id] = {
+            "status": "complete",
+            "result": excel_bytes,
+            "filename": "NEST_Forecasts_MultiModel.xlsx"
+        }
+        print(f"Job {job_id} completed successfully")
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Forecast processing failed: {str(e)}")
+        # Store error in job
+        FORECAST_JOBS[job_id] = {
+            "status": "error",
+            "error": f"Forecast processing failed: {str(e)}"
+        }
+        print(f"Job {job_id} failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
+@app.get("/api/forecast/status/{job_id}")
+async def check_forecast_status(request: Request, job_id: str):
+    """Check the status of a forecast job"""
+    _require_login(request)
+    
+    if job_id not in FORECAST_JOBS:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    job_data = FORECAST_JOBS[job_id]
+    
+    # Return status without the actual file data
+    return {
+        "status": job_data["status"],
+        "job_id": job_id,
+        "error": job_data.get("error"),
+        "progress": job_data.get("progress", 0)
+    }
+
+@app.get("/api/forecast/download/{job_id}")
+async def download_forecast(request: Request, job_id: str):
+    """Download completed forecast file"""
+    _require_login(request)
+    
+    if job_id not in FORECAST_JOBS:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    job_data = FORECAST_JOBS[job_id]
+    
+    if job_data["status"] != "complete":
+        raise HTTPException(status_code=400, detail=f"Job status is: {job_data['status']}")
+    
+    # Return the Excel file
+    excel_bytes = job_data["result"]
+    filename = job_data.get("filename", "forecast.xlsx")
+    
+    return StreamingResponse(
+        BytesIO(excel_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+@app.get("/api/forecast/debug-save/{job_id}")
+async def debug_save_forecast(job_id: str):  # ← Also remove "request: Request" parameter
+    """DEBUG: Save forecast file to disk for testing"""
+    # _require_login(request)  # ← Commented out for debugging
+    
+    if job_id not in FORECAST_JOBS:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    job_data = FORECAST_JOBS[job_id]
+    
+    if job_data["status"] != "complete":
+        raise HTTPException(status_code=400, detail=f"Job status is: {job_data['status']}")
+    
+    # Save to disk for testing
+    excel_bytes = job_data["result"]
+    debug_filename = f"/tmp/debug_forecast_{job_id}.xlsx"
+    
+    with open(debug_filename, "wb") as f:
+        f.write(excel_bytes)
+    
+    return {
+        "status": "saved",
+        "path": debug_filename,
+        "size_bytes": len(excel_bytes),
+        "message": f"File saved to {debug_filename} - try opening this file directly"
+    }
 # =====================================================================
 # POUR APP ROUTES (New automation endpoints)
 # =====================================================================

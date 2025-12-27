@@ -667,11 +667,9 @@
             }
 
             try {
-                document.getElementById('statusMsg').textContent = 'Processing forecast... this may take several minutes.';
+                document.getElementById('statusMsg').textContent = 'Starting forecast... this may take several minutes.';
                 
-                // Simulate progress (since we don't get real-time updates from backend)
-                simulateProgress();
-                
+                // Step 1: Start the forecast job
                 const response = await fetch('http://localhost:8000/api/forecast', {
                     method: 'POST',
                     body: formData,
@@ -680,14 +678,64 @@
 
                 if (!response.ok) {
                     const error = await response.json();
-                    throw new Error(error.detail || 'Forecast failed');
+                    throw new Error(error.detail || 'Failed to start forecast');
                 }
 
-                // Complete progress
+                const startData = await response.json();
+                const jobId = startData.job_id;
+                
+                console.log('Forecast job started:', jobId);
+                document.getElementById('statusMsg').textContent = 'Forecast processing... checking status...';
+                
+                // Simulate progress
+                simulateProgress();
+                
+                // Step 2: Poll for completion
+                let status = 'processing';
+                let attempts = 0;
+                const maxAttempts = 600; // 30 minutes max (600 * 3 seconds)
+                
+                while (status === 'processing' && attempts < maxAttempts) {
+                    await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3 seconds
+                    
+                    const statusResponse = await fetch(`http://localhost:8000/api/forecast/status/${jobId}`, {
+                        signal: abortController.signal
+                    });
+                    
+                    if (!statusResponse.ok) {
+                        throw new Error('Failed to check forecast status');
+                    }
+                    
+                    const statusData = await statusResponse.json();
+                    status = statusData.status;
+                    
+                    console.log(`Status check ${attempts + 1}: ${status}`);
+                    
+                    if (status === 'error') {
+                        throw new Error(statusData.error || 'Forecast processing failed');
+                    }
+                    
+                    attempts++;
+                }
+                
+                if (status !== 'complete') {
+                    throw new Error('Forecast timed out or failed to complete');
+                }
+                
+                // Step 3: Download the completed file
+                document.getElementById('statusMsg').textContent = 'Forecast complete! Downloading...';
                 updateProgress(100);
                 stopTimer();
-
-                const blob = await response.blob();
+                
+                const downloadResponse = await fetch(`http://localhost:8000/api/forecast/download/${jobId}`, {
+                    signal: abortController.signal
+                });
+                
+                if (!downloadResponse.ok) {
+                    throw new Error('Failed to download forecast file');
+                }
+                
+                const blob = await downloadResponse.blob();
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -775,21 +823,14 @@
         <div class="pp-footer-line"></div>
 
         <div class="pp-footer-links">
-        <a href="/static/about.html">About</a>
-        <span>•</span>
-        <a href="mailto:Aaron@predictandpour.com">Support</a>
-        <span>•</span>
-        <a href="/static/faqs.html">FAQs &amp; Resources</a>
+            <a href="/static/about.html">About</a>
+            <span>•</span>
+            <a href="mailto:Aaron@predictandpour.com">Support</a>
+            <span>•</span>
+            <a href="/static/faqs.html">FAQs &amp; Resources</a>
         </div>
 
         <div class="pp-footer-copy">
             © <span id="ppYear"></span> Predict &amp; Pour LLC. All rights reserved.
         </div>
         </div>
-
-        <script>
-        // Auto-update year
-        document.getElementById("ppYear").textContent = new Date().getFullYear();
-        </script>
-</body>
-</html>
