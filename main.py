@@ -5,6 +5,12 @@ from typing import Optional, List, Dict
 import asyncio
 import json
 import time
+from fastapi import Request
+from fastapi.responses import RedirectResponse
+from starlette.middleware.sessions import SessionMiddleware
+import os
+import secrets
+from fastapi import HTTPException
 
 import numpy as np
 import pandas as pd
@@ -13,6 +19,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, F
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # Forecasting imports (for Predict app)
@@ -24,11 +31,6 @@ from prophet import Prophet
 from pytorch_lightning.callbacks import EarlyStopping
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.statespace.sarimax import SARIMAX
-
-# Automation imports (for Pour app)
-import pyautogui
-import pyperclip
-import pygetwindow as gw
 
 warnings.filterwarnings("ignore")
 
@@ -73,6 +75,19 @@ PI_Z_90 = 1.645
 # Create FastAPI app
 app = FastAPI(title="Predict & Pour System", version="1.0.0")
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+# --- Auth / Session cookie ---
+SESSION_SECRET = os.getenv("PP_SESSION_SECRET", "dev-" + secrets.token_hex(16))
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    same_site="lax",
+    https_only=False,  # set True when deployed on https
+)
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -81,6 +96,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # =====================================================================
 # Pydantic Models
@@ -99,24 +117,9 @@ class ForecastConfig(BaseModel):
     run_lgbm: bool = False
     run_nbeats: bool = False
 
-class CoordinateCalibration(BaseModel):
-    pdcn_x: Optional[int] = None
-    pdcn_y: Optional[int] = None
-    week1_x: Optional[int] = None
-    week1_y: Optional[int] = None
-
-class ExecuteImportRequest(BaseModel):
-    pdcn: str
-    week1_x: int
-    week1_y: int
-
 # =====================================================================
 # Global State (for Pour app)
 # =====================================================================
-calibration_data = {
-    "pdcn_coords": None,
-    "week1_coords": None
-}
 uploaded_pour_data = None
 
 # =====================================================================
@@ -576,22 +579,171 @@ def run_nbeats(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
     # Skip historical forecasts for simplicity/reliability
     return df_pred
 
+
+# =====================================================================
+# AUTH HELPERS + ROUTES
+# =====================================================================
+
+def _is_logged_in(request: Request) -> bool:
+    return bool(request.session.get("pp_logged_in"))
+
+def _require_login(request: Request):
+    if not _is_logged_in(request):
+        raise HTTPException(status_code=401, detail="Not logged in")
+
+@app.get("/api/auth/me")
+async def auth_me(request: Request):
+    """Used by the extension to confirm session cookie is valid."""
+    return {"logged_in": _is_logged_in(request)}
+
+@app.post("/api/auth/login")
+async def auth_login(request: Request, username: str = Form(...), password: str = Form(...)):
+    # For MVP: single admin credential from env vars
+    # Set these in your terminal: PP_ADMIN_USER / PP_ADMIN_PASS
+    admin_user = os.getenv("PP_ADMIN_USER", "Aaron")
+    admin_pass = os.getenv("PP_ADMIN_PASS", "Allmight881")
+
+    if username != admin_user or password != admin_pass:
+        raise HTTPException(status_code=401, detail="Invalid username/password")
+
+    request.session["pp_logged_in"] = True
+    return {"status": "ok"}
+
+@app.post("/api/auth/logout")
+async def auth_logout(request: Request):
+    request.session.clear()
+    return {"status": "ok"}
+
+
 # =====================================================================
 # ROUTES - Homepage & Navigation
 # =====================================================================
 
 @app.get("/")
-async def root():
-    """Homepage with navigation to both apps"""
-    return HTMLResponse(content="""
+async def root(request: Request):
+    """Homepage with navigation to both apps (locked until login)"""
+
+    logged_in = bool(request.session.get("pp_logged_in"))
+
+    # =========================
+    # LOGIN OVERLAY (when logged out)
+    # =========================
+    login_overlay = """
+    <div class="pp-overlay">
+        <div class="pp-modal">
+            <h2>Sign In</h2>
+            <p>Log in to unlock Predict &amp; Pour.</p>
+
+            <label>Username</label>
+            <input id="ppUser" autocomplete="username" />
+
+            <label>Password</label>
+            <input id="ppPass" type="password" autocomplete="current-password" />
+
+            <button id="ppLoginBtn">SIGN IN</button>
+            <div class="pp-error" id="ppErr"></div>
+        </div>
+    </div>
+
+    <script>
+    document.body.classList.add("pp-locked");
+
+    async function doLogin() {
+        const username = document.getElementById("ppUser").value.trim();
+        const password = document.getElementById("ppPass").value;
+        const err = document.getElementById("ppErr");
+        err.textContent = "";
+
+        try {
+            const form = new FormData();
+            form.append("username", username);
+            form.append("password", password);
+
+            const res = await fetch("/api/auth/login", {
+                method: "POST",
+                body: form,
+                credentials: "include"
+            });
+
+            if (!res.ok) {
+                const j = await res.json().catch(() => ({}));
+                throw new Error(j.detail || "Invalid username/password");
+            }
+
+            location.reload();
+        } catch(e) {
+            err.textContent = e.message || String(e);
+        }
+    }
+
+    document.getElementById("ppLoginBtn").addEventListener("click", doLogin);
+    document.getElementById("ppPass").addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") doLogin();
+    });
+    document.getElementById("ppUser").addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") doLogin();
+    });
+    </script>
+    """
+
+    # =========================
+    # LOGOUT BUTTON (when logged in)
+    # =========================
+    logout_button = """
+    <div id="pp-logout">
+      <button id="ppLogoutBtn">LOG OUT</button>
+    </div>
+
+    <style>
+    #pp-logout{
+    position: fixed;
+    bottom: 20px;
+    right: 24px;
+    z-index: 999999;
+    }
+    #ppLogoutBtn{
+      padding: 12px 28px;
+      border-radius: 14px;
+      border: 2px solid #EBBB40;
+      background: rgba(0,0,0,0.75);
+      color: #EBBB40;
+      font-weight: 900;
+      font-size: 15px;
+      cursor: pointer;
+      box-shadow: 0 10px 30px rgba(0,0,0,.5);
+    }
+    #ppLogoutBtn:hover{
+      background: #EBBB40;
+      color: #000;
+    }
+    </style>
+
+    <script>
+    document.getElementById("ppLogoutBtn")?.addEventListener("click", async () => {
+      try{
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          credentials: "include"
+        });
+      }finally{
+        location.reload();
+      }
+    });
+    </script>
+    """
+
+    # =========================
+    # MAIN PAGE HTML
+    # =========================
+    page_html = """
     <!DOCTYPE html>
     <html>
     <head>
         <title>Predict & Pour</title>
         <style>
-            body { 
-                margin: 0; 
-                font-family: Arial, sans-serif; 
+            body {
+                margin: 0;
+                font-family: Arial, sans-serif;
                 background: #000;
                 color: #fff;
                 position: relative;
@@ -603,19 +755,19 @@ async def root():
                 left: 0;
                 width: 100%;
                 height: 100%;
-                background: url('https://i.imgur.com/cdzKb9r.png') repeat;
+                background: url("/static/background-texture.png") repeat;
                 opacity: 0.18;
                 z-index: -1;
                 pointer-events: none;
             }
-            
-            /* VIDEO HEADER - MATCHES YOUR APPS */
-            .header { 
+
+            /* VIDEO HEADER */
+            .header {
                 position: relative;
                 overflow: hidden;
-                color: #EBBB40; 
-                padding: 20px; 
-                text-align: center; 
+                color: #EBBB40;
+                padding: 20px;
+                text-align: center;
                 border-bottom: 3px solid #EBBB40;
                 display: flex;
                 align-items: center;
@@ -653,48 +805,48 @@ async def root():
                 margin: 0;
                 font-size: 26px;
             }
-            
+
             .container {
                 max-width: 1000px;
                 margin: 0px auto;
                 text-align: center;
                 padding: 15px 20px;
             }
-            
+
             .app-cards {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
                 gap: 30px;
                 margin: 40px 0;
             }
-            
+
             .app-card {
-                background: url('https://static.vecteezy.com/system/resources/previews/027/815/346/large_2x/dark-wood-background-texture-rustic-wooden-floor-textured-backdrop-free-photo.jpg');
+                background: url("/static/wood-texture.jpg") center center;
                 background-size: cover;
                 border: 3px solid #EBBB40;
                 border-radius: 12px;
                 padding: 40px 30px;
                 transition: transform 0.3s, box-shadow 0.3s;
             }
-            
+
             .app-card:hover {
                 transform: translateY(-15px) scale(1.05);
                 box-shadow: 0 25px 80px rgba(235, 187, 64, 0.7);
             }
-            
+
             .app-card h2 {
                 color: #EBBB40;
                 margin: 20px 0 10px 0;
                 font-size: 32px;
             }
-            
+
             .app-card p {
                 color: #fff;
                 font-size: 16px;
                 margin: 15px 0;
                 line-height: 1.6;
             }
-            
+
             .app-card a {
                 display: inline-block;
                 background: #EBBB40;
@@ -707,22 +859,17 @@ async def root():
                 font-size: 16px;
                 transition: background 0.3s;
             }
-            
+
             .app-card a:hover {
                 background: #d4a634;
             }
-            
-            .emoji {
-                font-size: 64px;
-                margin: 10px 0;
-            }
-            
+
             .subtitle {
                 color: #EBBB40;
                 font-size: 24px;
                 margin: 10px 0 10px 0;
             }
-            
+
             .description {
                 color: #ddd;
                 max-width: 800px;
@@ -730,47 +877,196 @@ async def root():
                 line-height: 1.8;
                 font-size: 18px;
             }
+
+            /* LOGIN OVERLAY STYLES */
+            body.pp-locked > *:not(.pp-overlay) {
+                filter: blur(7px);
+                pointer-events: none;
+                user-select: none;
+            }
+            .pp-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 999999;
+                background: rgba(0,0,0,0.65);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .pp-modal {
+                width: 440px;
+                max-width: calc(100% - 40px);
+                background: #111;
+                border: 2px solid #EBBB40;
+                border-radius: 16px;
+                padding: 24px;
+                color: #fff;
+                box-shadow: 0 25px 80px rgba(0,0,0,.65);
+            }
+            .pp-modal h2 {
+                margin: 0 0 6px 0;
+                color: #EBBB40;
+                font-size: 24px;
+                font-weight: 900;
+            }
+            .pp-modal p {
+                margin: 0 0 14px 0;
+                opacity: 0.9;
+                font-size: 14px;
+                line-height: 1.4;
+            }
+            .pp-modal label {
+                display: block;
+                margin-top: 12px;
+                font-weight: 800;
+                font-size: 13px;
+                color: #fff;
+            }
+            .pp-modal input {
+                width: 100%;
+                padding: 10px 12px;
+                margin-top: 6px;
+                border-radius: 10px;
+                border: 1px solid #444;
+                background: #000;
+                color: #fff;
+                font-size: 14px;
+                box-sizing: border-box;
+            }
+            .pp-modal button {
+                width: 100%;
+                margin-top: 18px;
+                padding: 12px;
+                background: #EBBB40;
+                color: #000;
+                border: none;
+                border-radius: 10px;
+                font-weight: 900;
+                font-size: 15px;
+                cursor: pointer;
+            }
+            .pp-modal button:hover { filter: brightness(0.95); }
+            .pp-error {
+                margin-top: 10px;
+                min-height: 18px;
+                color: #ff8a8a;
+                font-size: 13px;
+            }
+            /* Footer */
+            .pp-footer{
+            margin-top: 60px;
+            padding: 20px 0 30px 0;
+            text-align: center;
+            font-size: 13px;
+            color: #ccc;
+            }
+
+            .pp-footer-line{
+            width: 100%;
+            height: 3px;
+            background: #EBBB40;
+            margin-bottom: 14px;
+            }
+
+            .pp-footer-links{
+            margin-bottom: 8px;
+            }
+
+            .pp-footer-links a{
+            color: #EBBB40;
+            text-decoration: none;
+            font-weight: 700;
+            margin: 0 6px;
+            }
+
+            .pp-footer-links a:hover{
+            text-decoration: underline;
+            }
+
+            .pp-footer-copy{
+            font-size: 12px;
+            opacity: 0.75;
+            }
         </style>
     </head>
     <body>
-        <!-- VIDEO HEADER -->
         <div class="header">
             <video autoplay muted loop playsinline class="header-video">
-                <source src="https://i.imgur.com/ity2XJw.mp4" type="video/mp4">
+                <source src="/static/beer-header.mp4" type="video/mp4">
             </video>
             <div class="header-content">
-                <img src="https://i.imgur.com/Bf1hNE0.png" alt="Predict & Pour Logo" width="150" style="margin-bottom: 10px;">
+                <img src="/static/pp-logo.png" alt="Predict & Pour Logo" width="150" style="margin-bottom: 10px;">
                 <h1>Predict & Pour Forecasting System</h1>
                 <p>Professional Forecasting & Execution Platform</p>
             </div>
         </div>
-        
+
         <div class="container">
             <h2 class="subtitle">Choose Your Tool</h2>
             <p class="description">
-                A complete forecasting solution: Generate multi-model AI predictions with Predict, 
+                A complete forecasting solution: Generate multi-model AI predictions with Predict,
                 then automate execution with Pour. The perfect one-two punch for data-driven forecasting.
             </p>
-            
+
             <div class="app-cards">
                 <div class="app-card">
-                    <img src="https://i.imgur.com/uFQzEoN.png" alt="Predict Logo" style="width: 150px; height: 150px; margin: 10px 0;">
+                    <img src="/static/predict-logo.png" alt="Predict Logo" style="width: 150px; height: 150px; margin: 10px 0;">
                     <h2>Predict</h2>
                     <p>Multi-model forecasting powered by advanced algorithims and AI models. Choose from 8 different forecasting models to predict future sales.</p>
                     <a href="/predict">Launch Predict →</a>
                 </div>
-                
+
                 <div class="app-card">
-                    <img src="https://i.imgur.com/cNL5gwd.png" alt="Pour Logo" style="width: 150px; height: 150px; margin: 10px 0;">
+                    <img src="/static/pour-logo.png" alt="Pour Logo" style="width: 150px; height: 150px; margin: 10px 0;">
                     <h2>Pour</h2>
                     <p>Automated forecast execution into OnePortal. Smart calibration and one-click import automation for your data.</p>
                     <a href="/pour">Launch Pour →</a>
                 </div>
             </div>
         </div>
+
+        <!-- LOGIN OVERLAY INJECTED ONLY WHEN NOT LOGGED IN -->
+        <!-- __LOGIN_OVERLAY__ -->
+
+        <!-- LOGOUT BUTTON INJECTED ONLY WHEN LOGGED IN -->
+        <!-- __LOGOUT_BUTTON__ -->
+        <!-- FOOTER -->
+        <div class="pp-footer">
+        <div class="pp-footer-line"></div>
+
+        <div class="pp-footer-links">
+        <a href="/static/about.html">About</a>
+        <span>•</span>
+        <a href="mailto:Aaron@predictandpour.com">Support</a>
+        <span>•</span>
+        <a href="/static/faqs.html">FAQs &amp; Resources</a>
+        </div>
+
+        <div class="pp-footer-copy">
+            © <span id="ppYear"></span> Predict &amp; Pour LLC. All rights reserved.
+        </div>
+        </div>
+
+        <script>
+        // Auto-update year
+        document.getElementById("ppYear").textContent = new Date().getFullYear();
+        </script>
     </body>
     </html>
-    """)
+    """
+
+    if logged_in:
+        return HTMLResponse(
+            content=page_html
+            .replace("<!-- __LOGIN_OVERLAY__ -->", "")
+            .replace("<!-- __LOGOUT_BUTTON__ -->", logout_button)
+        )
+
+    return HTMLResponse(
+        content=page_html
+        .replace("<!-- __LOGIN_OVERLAY__ -->", login_overlay)
+        .replace("<!-- __LOGOUT_BUTTON__ -->", "")
+    )
 
 @app.get("/predict")
 async def serve_predict():
@@ -806,7 +1102,7 @@ def parse_ab_report(ab_report_bytes: bytes) -> Dict:
     
     # Extract required columns
     required_cols = ["Curr. Forecast", "Auto Forecast", "Prior YR(Act)", 
-                     "pdcn", "Brand", "Package", "Forecast Week"]
+                     "pdcn", "Brand", "Package", "Forecast Week", "Brand Family"]
     
     missing_cols = set(required_cols) - set(df.columns)
     if missing_cols:
@@ -850,7 +1146,8 @@ def parse_ab_report(ab_report_bytes: bytes) -> Dict:
             'auto_forecast': row["Auto Forecast"] if pd.notna(row["Auto Forecast"]) else "",
             'prior_yr': row["Prior YR(Act)"] if pd.notna(row["Prior YR(Act)"]) else "",
             'pdcn': pdcn,
-            'description': description
+            'description': description,
+            'brand_family': str(row["Brand Family"]).strip() if pd.notna(row["Brand Family"]) else ""
         }
     
     return lookup
@@ -1020,11 +1317,67 @@ async def create_forecast(
                 status_code=400,
                 detail="No forecasts were generated. Check your file or adjust filters."
             )
-
+        
+        print(f"\n===== CONCATENATING {len(detailed_rows)} DATAFRAMES =====")
+        print(f"Sample columns from first df: {list(detailed_rows[0].columns) if detailed_rows else 'None'}")
         df_out = pd.concat(detailed_rows, ignore_index=True).sort_values(["sku_id", "ds"])
+        print("===== CONCAT COMPLETE =====\n")
 
         # ======================== Excel Export ========================
         output = BytesIO()
+
+        # REORDER DATAFRAME COLUMNS AND REMOVE UNWANTED COLUMNS
+        print("\n===== STARTING DATAFRAME REORDERING =====")
+        print(f"df_out shape before filtering: {df_out.shape}")
+        print(f"df_out columns before filtering: {list(df_out.columns)}")
+        
+        # Step 1: Drop unwanted columns first
+        columns_to_drop = []
+        for col in df_out.columns:
+            # Remove all upper/lower bounds
+            if '_yhat_lower' in col or '_yhat_upper' in col:
+                columns_to_drop.append(col)
+            # Remove Prophet component columns
+            elif col in ['trend', 'weekly', 'yearly', 'holidays']:
+                columns_to_drop.append(col)
+        
+        print(f"Columns to drop: {columns_to_drop}")
+        df_out = df_out.drop(columns=columns_to_drop, errors='ignore')
+        print(f"df_out shape after dropping: {df_out.shape}")
+        print(f"df_out columns after dropping: {list(df_out.columns)}")
+        
+        # Step 2: Define desired column order
+        base_cols = ["sku_id", "ds", "y"]
+        
+        model_order = [
+            "house_lager_yhat", "house_lager_acc",
+            "mind_melt_double_ipa_yhat", "mind_melt_double_ipa_acc",
+            "heritage_blend_yhat", "heritage_blend_acc",
+            "west_coast_ipa_yhat", "west_coast_ipa_acc",
+            "creamy_nitro_yhat", "creamy_nitro_acc",
+            "small_batch_classic_yhat", "small_batch_classic_acc",
+            "light_hazy_yhat", "light_hazy_acc",
+            "legacy_grand_reserve_yhat", "legacy_grand_reserve_acc",
+        ]
+        
+        # Step 3: Build new column order (only columns that exist)
+        new_col_order = []
+        for col in base_cols + model_order:
+            if col in df_out.columns:
+                new_col_order.append(col)
+        
+        # Add any remaining columns we haven't accounted for
+        for col in df_out.columns:
+            if col not in new_col_order:
+                new_col_order.append(col)
+        
+        print(f"New column order: {new_col_order}")
+        
+        # Step 4: Reorder
+        df_out = df_out[new_col_order]
+        print(f"df_out shape after reordering: {df_out.shape}")
+        print("===== DATAFRAME REORDERING COMPLETE =====\n")
+        
         with pd.ExcelWriter(
             output, 
             engine="xlsxwriter", 
@@ -1057,22 +1410,20 @@ async def create_forecast(
 
             # Extra columns - will be populated with values from AB report (or blank if not available)
             extra_headers = [
-                ("Increase", "=X{row}*0.93"),  # Keep as formula
                 ("AB Auto-Forecast", ""),  # Will be populated with values
                 ("Current Forecast", ""),  # Will be populated with values
                 ("LY Sales", ""),  # Will be populated with values
                 (
                     "Week Number",
-                    '=IF(A{row} < (TODAY() - WEEKDAY(TODAY(), 2) + 1), "Past Date", '
-                    'IF(A{row} <= (TODAY() - WEEKDAY(TODAY(), 2) + 6), 0, '
-                    'IF(INT((A{row} - (TODAY() - WEEKDAY(TODAY(), 2) + 1)) / 7) <= 12, '
-                    'INT((A{row} - (TODAY() - WEEKDAY(TODAY(), 2) + 1)) / 7), "Past Date")))'
-                ),  # Keep as formula
-                ("PDCN", ""),  # Will be populated with values
+                    '=IF(B{row} < (TODAY() - WEEKDAY(TODAY(), 2) + 1), "Past Date", '
+                    'IF(B{row} <= (TODAY() - WEEKDAY(TODAY(), 2) + 6), 0, '
+                    'IF(INT((B{row} - (TODAY() - WEEKDAY(TODAY(), 2) + 1)) / 7) <= 12, '
+                    'INT((B{row} - (TODAY() - WEEKDAY(TODAY(), 2) + 1)) / 7), "Past Date")))'
+                ),  # Keep as formula (NOTE: Changed A{row} to B{row} because Date moved to column B)
                 ("Description", ""),  # Will be populated with values
+                ("Brand Family", ""),  # Will be populated with values
             ]
             numeric_headers = {
-                "Increase",
                 "AB Auto-Forecast",
                 "Current Forecast",
                 "LY Sales",
@@ -1088,118 +1439,78 @@ async def create_forecast(
 
             # ========== FRIENDLY COLUMN NAMES MAPPING ==========
             friendly_names = {
-                # Base columns
+                # Base columns (NEW ORDER: SKU ID, Date, Actual Sales)
+                "sku_id": "SKU ID",
                 "ds": "Date",
                 "y": "Actual Sales",
-                "sku_id": "SKU ID",
                 
                 # House Lager (Prophet)
                 "house_lager_yhat": "House Lager Forecast",
-                "house_lager_yhat_lower": "House Lager Lower",
-                "house_lager_yhat_upper": "House Lager Upper",
                 "house_lager_acc": "House Lager Accy",
-                "trend": "Trend",
-                "weekly": "Weekly",
-                "yearly": "Yearly",
-                "holidays": "Holidays",
                 
                 # Mind Melt Double IPA (NeuralProphet)
                 "mind_melt_double_ipa_yhat": "Mind Melt IPA Forecast",
-                "mind_melt_double_ipa_yhat_lower": "Mind Melt IPA Lower",
-                "mind_melt_double_ipa_yhat_upper": "Mind Melt IPA Upper",
                 "mind_melt_double_ipa_acc": "Mind Melt IPA Accy",
                 
                 # Heritage Blend (SARIMAX)
                 "heritage_blend_yhat": "Heritage Blend Forecast",
-                "heritage_blend_yhat_lower": "Heritage Blend Lower",
-                "heritage_blend_yhat_upper": "Heritage Blend Upper",
                 "heritage_blend_acc": "Heritage Blend Accy",
                 
                 # West Coast IPA (XGBoost)
                 "west_coast_ipa_yhat": "West Coast IPA Forecast",
-                "west_coast_ipa_yhat_lower": "West Coast IPA Lower",
-                "west_coast_ipa_yhat_upper": "West Coast IPA Upper",
                 "west_coast_ipa_acc": "West Coast IPA Accy",
                 
                 # Creamy Nitro (CatBoost)
                 "creamy_nitro_yhat": "Creamy Nitro Forecast",
-                "creamy_nitro_yhat_lower": "Creamy Nitro Lower",
-                "creamy_nitro_yhat_upper": "Creamy Nitro Upper",
                 "creamy_nitro_acc": "Creamy Nitro Accy",
                 
                 # Small Batch Classic (Holt-Winters)
                 "small_batch_classic_yhat": "Small Batch Classic Forecast",
-                "small_batch_classic_yhat_lower": "Small Batch Classic Lower",
-                "small_batch_classic_yhat_upper": "Small Batch Classic Upper",
                 "small_batch_classic_acc": "Small Batch Classic Accy",
                 
                 # Light Hazy (LightGBM)
                 "light_hazy_yhat": "Light Hazy Forecast",
-                "light_hazy_yhat_lower": "Light Hazy Lower",
-                "light_hazy_yhat_upper": "Light Hazy Upper",
                 "light_hazy_acc": "Light Hazy Accy",
                 
                 # Legacy Grand Reserve (N-BEATS)
                 "legacy_grand_reserve_yhat": "Legacy Grand Reserve Forecast",
-                "legacy_grand_reserve_yhat_lower": "Legacy Grand Reserve Lower",
-                "legacy_grand_reserve_yhat_upper": "Legacy Grand Reserve Upper",
                 "legacy_grand_reserve_acc": "Legacy Grand Reserve Accy",
             }
 
             # Format existing columns with beer names
             col_idx = {name: i for i, name in enumerate(df_out.columns)}
             group_map = {
-                hdr1: ["ds", "y", "sku_id"],
+                hdr1: ["sku_id", "ds", "y"],  # NEW ORDER!
                 hdr2: [
                     "house_lager_yhat",
-                    "house_lager_yhat_lower",
-                    "house_lager_yhat_upper",
-                    "trend",
-                    "weekly",
-                    "yearly",
-                    "holidays",
                     "house_lager_acc",
                 ],
                 hdr3: [
                     "mind_melt_double_ipa_yhat",
-                    "mind_melt_double_ipa_yhat_lower",
-                    "mind_melt_double_ipa_yhat_upper",
                     "mind_melt_double_ipa_acc"
                 ],
                 hdr4: [
                     "heritage_blend_yhat",
-                    "heritage_blend_yhat_lower",
-                    "heritage_blend_yhat_upper",
                     "heritage_blend_acc"
                 ],
                 hdr5: [
                     "west_coast_ipa_yhat",
-                    "west_coast_ipa_yhat_lower",
-                    "west_coast_ipa_yhat_upper",
                     "west_coast_ipa_acc"
                 ],
                 hdr7: [
                     "creamy_nitro_yhat",
-                    "creamy_nitro_yhat_lower",
-                    "creamy_nitro_yhat_upper",
                     "creamy_nitro_acc"
                 ],
                 hdr8: [
                     "small_batch_classic_yhat",
-                    "small_batch_classic_yhat_lower",
-                    "small_batch_classic_yhat_upper",
                     "small_batch_classic_acc"
                 ],
                 hdr9: [
                     "light_hazy_yhat",
-                    "light_hazy_yhat_lower",
-                    "light_hazy_yhat_upper",
                     "light_hazy_acc"
                 ],
                 hdr10: [
                     "legacy_grand_reserve_yhat",
-                    "legacy_grand_reserve_yhat_lower",
-                    "legacy_grand_reserve_yhat_upper",
                     "legacy_grand_reserve_acc"
                 ],
             }
@@ -1220,109 +1531,6 @@ async def create_forecast(
                         worksheet.set_column(c, c, 11, pct_fmt)  # Wider for "Accuracy"
                     else:
                         worksheet.set_column(c, c, 11, int_fmt)  # Wider for longer names
-
-            # ========== DYNAMIC COLUMN GROUPING (collapsible sections) ==========
-            
-            # Define which columns to hide for each model (detail columns like lower/upper bounds, components)
-            model_detail_columns = {
-                "house_lager": [
-                    "house_lager_yhat_lower",
-                    "house_lager_yhat_upper", 
-                    "trend",
-                    "weekly",
-                    "yearly",
-                    "holidays"
-                ],
-                "mind_melt_double_ipa": [
-                    "mind_melt_double_ipa_yhat_lower",
-                    "mind_melt_double_ipa_yhat_upper"
-                ],
-                "heritage_blend": [
-                    "heritage_blend_yhat_lower",
-                    "heritage_blend_yhat_upper"
-                ],
-                "west_coast_ipa": [
-                    "west_coast_ipa_yhat_lower",
-                    "west_coast_ipa_yhat_upper"
-                ],
-                "creamy_nitro": [
-                    "creamy_nitro_yhat_lower",
-                    "creamy_nitro_yhat_upper"
-                ],
-                "small_batch_classic": [
-                    "small_batch_classic_yhat_lower",
-                    "small_batch_classic_yhat_upper"
-                ],
-                "light_hazy": [
-                    "light_hazy_yhat_lower",
-                    "light_hazy_yhat_upper"
-                ],
-                "legacy_grand_reserve": [
-                    "legacy_grand_reserve_yhat_lower",
-                    "legacy_grand_reserve_yhat_upper"
-                ]
-            }
-            
-            # Group detail columns for each model that's present
-            for model_name, detail_cols in model_detail_columns.items():
-                # Check if this model was run (check for main yhat column)
-                main_col = f"{model_name}_yhat"
-                if main_col not in df_out.columns:
-                    continue  # Skip this model, it wasn't run
-                
-                # Find the column indices for detail columns that exist
-                detail_indices = []
-                for detail_col in detail_cols:
-                    if detail_col in df_out.columns:
-                        detail_indices.append(df_out.columns.get_loc(detail_col))
-                
-                if not detail_indices:
-                    continue  # No detail columns to hide
-                
-                # Group consecutive columns together
-                detail_indices.sort()
-                start_col = min(detail_indices)
-                end_col = max(detail_indices)
-                
-                # Convert to Excel column letters
-                start_letter = _col_number_to_letter(start_col)
-                end_letter = _col_number_to_letter(end_col)
-                
-                # Create collapsible group
-                worksheet.set_column(f'{start_letter}:{end_letter}', None, None, {'level': 1, 'hidden': True})
-            
-            # Group all accuracy columns together (if they exist)
-            accuracy_cols = [col for col in df_out.columns if col.endswith('_acc')]
-            if accuracy_cols:
-                acc_indices = [df_out.columns.get_loc(col) for col in accuracy_cols]
-                acc_indices.sort()
-                start_letter = _col_number_to_letter(min(acc_indices))
-                end_letter = _col_number_to_letter(max(acc_indices))
-                worksheet.set_column(f'{start_letter}:{end_letter}', None, None, {'level': 1, 'hidden': True})
-            
-            # Group the extra columns (MIR block: Increase through Description)
-            # These start at n_cols + 2 and go to n_cols + 2 + len(extra_headers) - 1
-            # But we want to KEEP visible: Final Forecast, Final Accy, and the first few extra columns
-            # Let's hide from "Helper" column onward (which is typically column 7+ in extra_headers)
-            
-            # Find which extra columns to hide (everything after "LY Sales")
-            extra_col_start = n_cols + 2  # First extra column
-            columns_to_keep_visible = ["Increase", "AB Auto-Forecast", "Current Forecast", "LY Sales","Description"]
-            
-            first_hidden_extra = None
-            for idx, (header, formula) in enumerate(extra_headers):
-                if header not in columns_to_keep_visible:
-                    first_hidden_extra = extra_col_start + idx
-                    break
-            
-            if first_hidden_extra is not None:
-                last_extra = extra_col_start + len(extra_headers) - 1
-                start_letter = _col_number_to_letter(first_hidden_extra)
-                end_letter = _col_number_to_letter(last_extra)
-                worksheet.set_column(f'{start_letter}:{end_letter}', None, None, {'level': 1, 'hidden': True})
-
-            # Show outline symbols
-            worksheet.outline_settings(True, True, True, False)
 
             # ========== DYNAMIC FINAL FORECAST FORMULA SECTION ==========
             
@@ -1361,7 +1569,7 @@ async def create_forecast(
                     model_cell_refs.append(f"{col_letter}{excel_row}")
                 
                 # Find AB Current Forecast column (2nd extra column: n_cols + 2 + 1)
-                ab_current_col_num = n_cols + 2 + 1  # Index of "AB Current Forecast"
+                ab_current_col_num = n_cols + 2  # Index of "AB Auto-Forecast" (first extra column)
                 ab_current_letter = _col_number_to_letter(ab_current_col_num)
                 ab_current_ref = f"{ab_current_letter}{excel_row}"
                 
@@ -1385,10 +1593,12 @@ async def create_forecast(
                 
                 # Final Accuracy formula (references Final Forecast column dynamically)
                 final_forecast_letter = _col_number_to_letter(col_final)
+                # Actual Sales is now in column C (not B)
+                actual_sales_letter = _col_number_to_letter(df_out.columns.get_loc("y"))
                 base_f2 = (
-                    f"IF(ABS({final_forecast_letter}{excel_row}-$B{excel_row})/$B{excel_row}>1,"
-                    f"ABS({final_forecast_letter}{excel_row}-$B{excel_row})/$B{excel_row}-1,"
-                    f"1-ABS({final_forecast_letter}{excel_row}-$B{excel_row})/$B{excel_row})"
+                    f"IF(ABS({final_forecast_letter}{excel_row}-${actual_sales_letter}{excel_row})/${actual_sales_letter}{excel_row}>1,"
+                    f"ABS({final_forecast_letter}{excel_row}-${actual_sales_letter}{excel_row})/${actual_sales_letter}{excel_row}-1,"
+                    f"1-ABS({final_forecast_letter}{excel_row}-${actual_sales_letter}{excel_row})/${actual_sales_letter}{excel_row})"
                 )
                 worksheet.write_formula(row, col_accy, f"=IFERROR({base_f2}, \"\")", pct_fmt, "")
                 
@@ -1419,11 +1629,11 @@ async def create_forecast(
                     elif header == "LY Sales":
                         value = ab_data.get('prior_yr', '')
                         worksheet.write(row, idx, value, fmt)
-                    elif header == "PDCN":
-                        value = ab_data.get('pdcn', '')
-                        worksheet.write(row, idx, value, None)
                     elif header == "Description":
                         value = ab_data.get('description', '')
+                        worksheet.write(row, idx, value, None)
+                    elif header == "Brand Family":
+                        value = ab_data.get('brand_family', '')
                         worksheet.write(row, idx, value, None)
                     else:
                         # Any other columns as formula
@@ -1432,10 +1642,7 @@ async def create_forecast(
             # Step 5: Write Final Forecast and Accuracy headers
             worksheet.write(0, col_final, "Final Forecast", hdr6)
             worksheet.write(0, col_accy, "Final Accy %", hdr6)
-        
-        # CRITICAL: Close the writer first, then modify the raw XML
-        # This forces Excel to recalculate on open
-        
+            
         # Return Excel file
         output.seek(0)
         return StreamingResponse(
@@ -1454,95 +1661,116 @@ async def create_forecast(
 # =====================================================================
 
 @app.post("/api/pour/upload")
-async def upload_pour_file(file: UploadFile = File(...)):
+async def upload_pour_file(request: Request, file: UploadFile = File(...)):
+    _require_login(request)
     """Upload Excel file for Pour app"""
     global uploaded_pour_data
-    
-    contents = await file.read()
-    df = pd.read_excel(BytesIO(contents))
-    
-    # Clean data (from original Streamlit code)
-    df.columns = df.columns.str.strip().str.lower()
-    df = df[df['week number'] != "Past Date"]
-    df = df[df['supplier'].str.strip().str.lower() == "anheuser busch"]
-    df = df[['pdcn', 'description', 'final forecast', 'week number']]
-    
-    uploaded_pour_data = df
-    
-    # Create display options
-    df['pdcn'] = df['pdcn'].astype(str)
-    df['description'] = df['description'].astype(str)
-    df['display_label'] = df['pdcn'] + " (" + df['description'] + ")"
-    unique_options = df[['pdcn', 'display_label']].drop_duplicates().sort_values('display_label')
-    
-    return {
-        "status": "success",
-        "items": unique_options.to_dict('records')
-    }
 
-@app.post("/api/pour/calibrate")
-async def calibrate_coordinates():
-    """Capture mouse coordinates after 3 second delay"""
-    time.sleep(3)
-    pos = pyautogui.position()
-    return {"x": pos.x, "y": pos.y}
+    try:
+        print(f"\n=== UPLOAD DEBUG ===")
+        print(f"Filename: {file.filename}")
 
-@app.post("/api/pour/find-pdcn")
-async def find_pdcn(pdcn_x: int, pdcn_y: int):
-    """Find PDCN by reading from screen"""
-    pyautogui.moveTo(pdcn_x, pdcn_y)
-    pyautogui.doubleClick()
-    time.sleep(0.2)
-    pyautogui.hotkey('ctrl', 'c')
-    time.sleep(0.2)
-    copied_pdcn = pyperclip.paste().strip()
-    
-    return {"pdcn": copied_pdcn}
+        contents = await file.read()
+        df = pd.read_excel(BytesIO(contents))
 
-@app.post("/api/pour/execute")
-async def execute_import(request: ExecuteImportRequest):
-    """Execute the automation to type forecast values"""
+        print(f"Original columns: {list(df.columns)}")
+        print(f"Original shape: {df.shape}")
+
+        # Clean data
+        df.columns = df.columns.str.strip().str.lower()
+        print(f"Cleaned columns: {list(df.columns)}")
+
+        # Required cols
+        required_columns = ["week number", "description", "final forecast"]
+        missing_columns = [c for c in required_columns if c not in df.columns]
+
+        # ID column can be sku id or pdcn
+        if "sku id" not in df.columns and "pdcn" not in df.columns:
+            missing_columns.append("sku id or pdcn")
+
+        if missing_columns:
+            raise HTTPException(status_code=400, detail=f"Missing required columns: {', '.join(missing_columns)}")
+
+        # Filter out past dates (case-insensitive safety)
+        df["week number"] = df["week number"].astype(str)
+        df = df[df["week number"].str.lower() != "past date"]
+
+        # Normalize ID column name to pdcn
+        if "pdcn" not in df.columns and "sku id" in df.columns:
+            df = df.rename(columns={"sku id": "pdcn"})
+
+        # Keep only needed columns
+        df = df[["pdcn", "description", "final forecast", "week number"]]
+
+        if df.empty:
+            raise HTTPException(status_code=400, detail="No valid forecast data found in file")
+
+        uploaded_pour_data = df
+
+        # Create display options
+        df["pdcn"] = df["pdcn"].astype(str)
+        df["description"] = df["description"].astype(str)
+        df["display_label"] = df["pdcn"] + " (" + df["description"] + ")"
+        unique_options = df[["pdcn", "display_label"]].drop_duplicates().sort_values("display_label")
+
+        return {"status": "success", "items": unique_options.to_dict("records")}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
+
+
+@app.get("/api/pour/get-forecast")
+async def get_forecast(request: Request, pdcn: str):
+    _require_login(request)
+    """Get forecast values for a specific PDCN (called by extension/automa)"""
     global uploaded_pour_data
-    
+
     if uploaded_pour_data is None:
-        raise HTTPException(status_code=400, detail="No data uploaded")
-    
-    # Filter data for selected PDCN
-    filtered_df = uploaded_pour_data[uploaded_pour_data['pdcn'] == request.pdcn].sort_values(by='week number')
-    
+        return {"status": "error", "message": "No forecast data uploaded. Please upload a file first."}
+
+    # Ensure pdcn is compared as string
+    uploaded_pour_data["pdcn"] = uploaded_pour_data["pdcn"].astype(str)
+    pdcn = str(pdcn)
+
+    filtered_df = uploaded_pour_data[uploaded_pour_data["pdcn"] == pdcn]
     if filtered_df.empty:
-        raise HTTPException(status_code=404, detail="PDCN not found")
-    
-    # Focus browser
-    browser_window = None
-    for w in gw.getWindowsWithTitle(''):
-        if any(browser in w.title for browser in ['Chrome', 'Edge', 'Safari', 'Firefox']):
-            browser_window = w
-            break
-    
-    if browser_window:
-        browser_window.activate()
-        time.sleep(0.5)
-    
-    # Click Week 1 field
-    pyautogui.moveTo(request.week1_x, request.week1_y)
-    pyautogui.click()
-    time.sleep(0.5)
-    
-    # Type values
-    values_typed = []
-    for value in filtered_df['final forecast']:
-        whole_number = str(int(round(value)))
-        pyautogui.write(whole_number)
-        pyautogui.press('tab')
-        time.sleep(0.05)
-        values_typed.append(whole_number)
-    
+        return {"status": "error", "message": f"PDCN {pdcn} not found in forecast data"}
+
+    # Convert week number safely + only keep weeks 0-12
+    filtered_df = filtered_df.copy()
+    filtered_df["week number"] = pd.to_numeric(filtered_df["week number"], errors="coerce")
+    filtered_df = filtered_df[filtered_df["week number"].between(0, 12)]
+    filtered_df = filtered_df.sort_values(by="week number")
+
+    forecast_values = [int(round(v)) for v in filtered_df["final forecast"].tolist()]
+
+    if len(forecast_values) != 13:
+        return {
+            "status": "error",
+            "message": f"Expected 13 weeks (0-12), but found {len(forecast_values)} weeks for PDCN {pdcn}",
+        }
+
     return {
         "status": "success",
-        "pdcn": request.pdcn,
-        "values_typed": values_typed,
-        "count": len(values_typed)
+        "pdcn": pdcn,
+        "week0": forecast_values[0],
+        "week1": forecast_values[1],
+        "week2": forecast_values[2],
+        "week3": forecast_values[3],
+        "week4": forecast_values[4],
+        "week5": forecast_values[5],
+        "week6": forecast_values[6],
+        "week7": forecast_values[7],
+        "week8": forecast_values[8],
+        "week9": forecast_values[9],
+        "week10": forecast_values[10],
+        "week11": forecast_values[11],
+        "week12": forecast_values[12],
+        "count": 13,
     }
 
 @app.get("/api/models")

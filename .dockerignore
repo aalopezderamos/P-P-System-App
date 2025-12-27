@@ -1,0 +1,24 @@
+# virtual env / python junk
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# logs / training artifacts
+catboost_info/
+lightning_logs/
+index_files/
+
+# misc
+.DS_Store
+.git/
+.github/
+**/__pycache__/
+*.pt
+*.pth
+*.ckpt
+*.pkl
+*.joblib
+*.onnx
