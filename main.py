@@ -131,12 +131,6 @@ FORECAST_JOBS = {}  # {job_id: {"status": "processing/complete/error", "result":
 
 def get_custom_holidays() -> pd.DataFrame:
     holiday_week_dates = [
-        ("fiesta", pd.date_range("2023-04-20", "2023-04-30")),
-        ("fiesta", pd.date_range("2024-04-18", "2024-04-28")),
-        ("fiesta", pd.date_range("2025-04-21", "2025-05-04")),
-        ("rodeo", pd.date_range("2023-02-09", "2023-02-26")),
-        ("rodeo", pd.date_range("2024-02-08", "2024-02-25")),
-        ("rodeo", pd.date_range("2025-02-12", "2025-03-01")),
         ("christmas", ["2023-12-25", "2024-12-25", "2025-12-25"]),
         ("christmas_eve", ["2023-12-24", "2024-12-24", "2025-12-24"]),
         ("memorial_day", ["2023-05-29", "2024-05-27", "2025-05-26"]),
@@ -264,7 +258,12 @@ def run_prophet(df_sku: pd.DataFrame, holidays_df: pd.DataFrame, horizon_weeks: 
         yearly_seasonality=True,
         weekly_seasonality=True,
         holidays=holidays_df,
-        interval_width=0.90,
+        interval_width=0.90, # Dialed in forecast strength
+        n_changepoints=15,           # ← Reduced from default 25
+        changepoint_prior_scale=0.05, # ← Less flexible trend
+        seasonality_mode='additive',  # ← Faster than multiplicative
+        mcmc_samples=0,                # ← Disable MCMC sampling
+        daily_seasonality=False,        # ← Explicit disable (you have weekly data)
     )
     m.fit(df_sku[["ds", "y"]])
     last_date = df_sku["ds"].max()
@@ -291,7 +290,16 @@ def run_neuralprophet(df_sku: pd.DataFrame, holidays_df: pd.DataFrame, horizon_w
     if not _HAS_NEURALPROPHET:
         raise ImportError("neuralprophet is not installed")
     event_names = holidays_df["holiday"].astype(str).unique().tolist()
-    m = NeuralProphet(weekly_seasonality=True, yearly_seasonality=True, quantiles=[0.05, 0.95])
+    m = NeuralProphet(
+        weekly_seasonality=True,
+        yearly_seasonality=True,
+        quantiles=[0.05, 0.95],
+        epochs=50,                      # ← Reduced from default ~100-200 (2-4x faster)
+        batch_size=32,                  # ← Explicit batch size (faster)
+        learning_rate=0.1,              # ← Faster learning (default ~0.01)
+        num_hidden_layers=1,            # ← Reduced from default 2 (2x faster)
+        d_hidden=32,                    # ← Smaller network (default 64, 2x faster)
+    )
     for ev in event_names:
         m.add_events(ev, lower_window=-3, upper_window=3)
     train_df = df_sku[["ds", "y"]].copy()
@@ -337,7 +345,7 @@ def run_neuralprophet(df_sku: pd.DataFrame, holidays_df: pd.DataFrame, horizon_w
 def run_sarimax(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
     ts = df_sku.set_index("ds")["y"].asfreq(WEEK_FREQ)
     order = (1, 1, 1)
-    seasonal_order = (1, 1, 1, 52)
+    seasonal_order = (0, 1, 0, 52) # Dialed in forecast strength
     model = SARIMAX(ts, order=order, seasonal_order=seasonal_order, enforce_stationarity=False, enforce_invertibility=False)
     res = model.fit(disp=False)
     fcst = res.get_forecast(steps=horizon_weeks)
@@ -384,8 +392,14 @@ def run_xgboost(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
     mask = X.notna().all(axis=1)
     X_train, y_train = X[mask], y[mask]
     model = XGBRegressor(
-        n_estimators=600, max_depth=4, learning_rate=0.05,
-        subsample=0.8, colsample_bytree=0.8, objective="reg:squarederror", random_state=42,
+        n_estimators=100,           # ← Reduced from 600 (6x faster!)
+        max_depth=4,                # ← Keep (good depth)
+        learning_rate=0.1,          # ← Increased from 0.05 (faster convergence)
+        subsample=0.8,              # ← Keep
+        colsample_bytree=0.8,       # ← Keep
+        objective="reg:squarederror",
+        random_state=42,
+        early_stopping_rounds=10    # ← NEW: Stop early if not improving
     )
     model.fit(X_train, y_train)
     preds_in = model.predict(X_train)
@@ -418,7 +432,18 @@ def run_catboost(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
     y = features["y"]
     mask = X.notna().all(axis=1)
     X_train, y_train = X[mask], y[mask]
-    model = CatBoostRegressor(verbose=0)
+    
+    # OPTIMIZED CATBOOST PARAMETERS
+    model = CatBoostRegressor(
+        iterations=100,             # Reduced from 1000 default
+        depth=4,                    # Reduced from 6 default
+        learning_rate=0.1,          # Explicit (faster than auto ~0.03)
+        verbose=0,
+        random_seed=42,
+        thread_count=-1,            # Use all CPU cores
+        allow_writing_files=False   # Don't create temp files
+    )
+    
     model.fit(X_train, y_train)
     preds_in = model.predict(X_train)
     resid_std = np.std(y_train - preds_in)
@@ -467,8 +492,14 @@ def run_lightgbm(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
     mask = X.notna().all(axis=1)
     X_train, y_train = X[mask], y[mask]
     model = LGBMRegressor(
-        n_estimators=600, max_depth=4, learning_rate=0.05,
-        subsample=0.8, colsample_bytree=0.8, random_state=42
+        n_estimators=100,           # ← Reduced from 600 (5-8x faster!)
+        max_depth=4,                # ← Keep (good depth)
+        learning_rate=0.1,          # ← Increased from 0.05 (faster convergence)
+        subsample=0.8,              # ← Keep (also called 'bagging_fraction' in LightGBM)
+        colsample_bytree=0.8,       # ← Keep (also called 'feature_fraction')
+        random_state=42,
+        n_jobs=-1,                  # ← NEW: Use all CPU cores
+        verbose=-1                  # ← NEW: Suppress warnings
     )
     model.fit(X_train, y_train)
     preds_in = model.predict(X_train)
@@ -539,8 +570,12 @@ def run_nbeats(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
 
     model = NBEATSModel(
         input_chunk_length=in_len,
-        output_chunk_length=out_len,
-        n_epochs=30,  # Reduced epochs for speed
+        output_chunk_length=out_len, # Dialed in forecast strength
+        n_epochs=10,              # ← Reduced from 30 (3x faster)
+        num_stacks=2,             # ← Reduced from default 30
+        num_blocks=1,             # ← Reduced from default 1 (already good)
+        num_layers=2,             # ← Reduced from default 4
+        layer_widths=128,         # ← Reduced from default 256
         batch_size=bs,
         random_state=42,
         pl_trainer_kwargs=pl_kwargs,

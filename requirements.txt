@@ -31,14 +31,19 @@ catboost
 lightgbm
 
 # Deep Learning Time Series (Darts)
-u8darts[torch]==0.30.0
+# NOTE: Installing without [torch] extra to avoid pulling in full PyTorch
+u8darts==0.30.0
 
 # ========================================
 # ML & DEEP LEARNING FRAMEWORKS
 # ========================================
 scikit-learn==1.7.1
-torch
+
+# PyTorch (CPU-only) - Installed via Dockerfile for optimal size
+# torch and torchvision are installed separately using CPU-only index
+
 pytorch-lightning
+
 # ========================================
 # UTILITIES
 # ========================================
