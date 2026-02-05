@@ -49,3 +49,10 @@ pytorch-lightning
 # ========================================
 holidays
 itsdangerous
+
+# ========================================
+# PASSWORD DATABASE
+# ========================================
+sqlalchemy
+passlib
+bcrypt==4.0.1

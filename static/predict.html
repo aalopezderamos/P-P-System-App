@@ -670,7 +670,7 @@
                 document.getElementById('statusMsg').textContent = 'Starting forecast... this may take several minutes.';
                 
                 // Step 1: Start the forecast job
-                const response = await fetch('http://localhost:8000/api/forecast', {
+                const response = await fetch('/api/forecast', {
                     method: 'POST',
                     body: formData,
                     signal: abortController.signal
@@ -698,7 +698,7 @@
                 while (status === 'processing' && attempts < maxAttempts) {
                     await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3 seconds
                     
-                    const statusResponse = await fetch(`http://localhost:8000/api/forecast/status/${jobId}`, {
+                    const statusResponse = await fetch(`/api/forecast/status/${jobId}`, {
                         signal: abortController.signal
                     });
                     
@@ -727,7 +727,7 @@
                 updateProgress(100);
                 stopTimer();
                 
-                const downloadResponse = await fetch(`http://localhost:8000/api/forecast/download/${jobId}`, {
+                const downloadResponse = await fetch(`/api/forecast/download/${jobId}`, {
                     signal: abortController.signal
                 });
                 
@@ -823,11 +823,13 @@
         <div class="pp-footer-line"></div>
 
         <div class="pp-footer-links">
-            <a href="/static/about.html">About</a>
-            <span>•</span>
-            <a href="mailto:Aaron@predictandpour.com">Support</a>
-            <span>•</span>
-            <a href="/static/faqs.html">FAQs &amp; Resources</a>
+        <a href="/static/about.html">About</a>
+        <span>•</span>
+        <a href="mailto:aaron@predictandpour.com">Support</a>
+        <span>•</span>
+        <a href="/static/faqs.html">FAQs & Resources</a>
+        <span>•</span>
+        <a href="/static/privacy.html">Privacy Policy</a>
         </div>
 
         <div class="pp-footer-copy">

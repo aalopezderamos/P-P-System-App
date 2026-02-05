@@ -151,14 +151,14 @@
 
     /* About layout */
     .about-grid {
-      display: grid;
-      grid-template-columns: 220px 1fr;
-      gap: 22px;
-      align-items: start;
       margin-top: 18px;
+      overflow: auto; /* Clear the float */
     }
 
     .headshot {
+      float: left;
+      width: 220px;
+      margin: 0 22px 18px 0;
       border: 2px solid #EBBB40;
       border-radius: 14px;
       overflow: hidden;
@@ -255,11 +255,11 @@
 
     /* Responsive */
     @media (max-width: 720px){
-      .about-grid{
-        grid-template-columns: 1fr;
-      }
       .headshot{
+        float: none;
         max-width: 260px;
+        margin: 0 auto 18px auto;
+        display: block;
       }
       .callouts{
         grid-template-columns: 1fr;
@@ -368,11 +368,13 @@
       <div class="pp-footer-line"></div>
 
       <div class="pp-footer-links">
-      <a href="/static/about.html">About</a>
-      <span>•</span>
-      <a href="mailto:Aaron@predictandpour.com">Support</a>
-      <span>•</span>
-      <a href="/static/faqs.html">FAQs &amp; Resources</a>
+        <a href="/static/about.html">About</a>
+        <span>•</span>
+        <a href="mailto:aaron@predictandpour.com">Support</a>
+        <span>•</span>
+        <a href="/static/faqs.html">FAQs & Resources</a>
+        <span>•</span>
+        <a href="/static/privacy.html">Privacy Policy</a>
       </div>
 
       <div class="pp-footer-copy">

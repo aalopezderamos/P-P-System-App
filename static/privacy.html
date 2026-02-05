@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy – Predict & Pour</title>
+
+  <style>
+    body { 
+      margin: 0; 
+      font-family: Arial, sans-serif; 
+      background: #000;
+      position: relative;
+      color: #fff;
+    }
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: url("/static/background-texture.png") repeat;
+      opacity: 0.18;
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    /* HEADER (MATCHES pour.html) */
+    .header { 
+      position: relative;
+      overflow: hidden;
+      color: #EBBB40; 
+      padding: 20px; 
+      text-align: center; 
+      border-bottom: 3px solid #EBBB40;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 150px;
+    }
+    .header-video {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 0;
+    }
+    .header-content {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .header h1 {
+      -webkit-text-stroke: 5px #000000;
+      text-stroke: 5px #000000;
+      paint-order: stroke fill;
+      margin: 0;
+      font-size: 42px;
+    }
+    .header p {
+      -webkit-text-stroke: 3px #000000;
+      text-stroke: 3px #000000;
+      paint-order: stroke fill;
+      margin: 0;
+      font-size: 22px;
+    }
+
+    /* CONTAINER */
+    .container { 
+      max-width: 1200px; 
+      margin: 0px auto; 
+      padding: 15px 20px; 
+    }
+
+    /* NAV */
+    .nav-link {
+      display: inline-block;
+      color: #EBBB40;
+      text-decoration: none;
+      margin: 10px 5px;
+      transition: color 0.3s;
+    }
+    .nav-link:hover {
+      color: #fff;
+    }
+
+    .panel {
+    background: #000;
+    padding: 30px 40px;
+    border-radius: 8px;
+    margin: 20px auto;
+    border: 2px solid #EBBB40;
+    box-shadow: 0 25px 80px rgba(0,0,0,0.6);
+    max-width: 900px;
+    }
+
+    .panel h2 {
+      margin: 30px 0 15px 0;
+      color: #EBBB40;
+      font-size: 28px;
+      border-bottom: 2px solid #EBBB40;
+      padding-bottom: 8px;
+    }
+
+    .panel h2:first-child {
+      margin-top: 0;
+    }
+
+    .panel h3 {
+      margin: 20px 0 12px 0;
+      color: #EBBB40;
+      font-size: 20px;
+    }
+
+    .panel p {
+      margin: 12px 0;
+      color: #ddd;
+      line-height: 1.7;
+      font-size: 15px;
+    }
+
+    .panel ul {
+      margin: 12px 0 12px 25px;
+      color: #ddd;
+      line-height: 1.7;
+    }
+
+    .panel li {
+      margin: 8px 0;
+      color: #ddd;
+    }
+
+    .panel strong {
+      color: #EBBB40;
+    }
+
+    /* HIGHLIGHT BOXES */
+    .highlight-box {
+      background: rgba(76, 175, 80, 0.15);
+      border-left: 4px solid #4caf50;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 4px;
+    }
+
+    .highlight-box h3 {
+      color: #4caf50;
+      margin-top: 0;
+    }
+
+    .highlight-box p,
+    .highlight-box ul,
+    .highlight-box li {
+      color: #e8f5e9;
+    }
+
+    .warning-box {
+      background: rgba(255, 152, 0, 0.15);
+      border-left: 4px solid #ff9800;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 4px;
+    }
+
+    .warning-box h3 {
+      color: #ff9800;
+      margin-top: 0;
+    }
+
+    .warning-box ul,
+    .warning-box li {
+      color: #fff3e0;
+    }
+
+    .effective-date {
+      background: rgba(235, 187, 64, 0.2);
+      border-left: 4px solid #EBBB40;
+      padding: 15px 20px;
+      margin: 20px 0;
+      border-radius: 4px;
+      font-weight: 600;
+      color: #EBBB40;
+    }
+
+    .contact-box {
+      background: rgba(235, 187, 64, 0.1);
+      border: 2px solid #EBBB40;
+      padding: 25px;
+      margin: 30px 0;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .contact-box a {
+      color: #EBBB40;
+      font-weight: 600;
+      text-decoration: none;
+      border-bottom: 2px solid #EBBB40;
+    }
+
+    .contact-box a:hover {
+      color: #fff;
+      border-bottom-color: #fff;
+    }
+
+    /* Footer */
+    .pp-footer {
+      margin-top: 60px;
+      padding: 20px 0 30px 0;
+      text-align: center;
+      font-size: 13px;
+      color: #ccc;
+    }
+
+    .pp-footer-line {
+      width: 100%;
+      height: 3px;
+      background: #EBBB40;
+      margin-bottom: 14px;
+    }
+
+    .pp-footer-links {
+      margin-bottom: 8px;
+    }
+
+    .pp-footer-links a {
+      color: #EBBB40;
+      text-decoration: none;
+      font-weight: 700;
+      margin: 0 6px;
+    }
+
+    .pp-footer-links a:hover {
+      text-decoration: underline;
+    }
+
+    .pp-footer-copy {
+      font-size: 12px;
+      opacity: 0.75;
+    }
+
+    .intro-text {
+      font-size: 16px;
+      color: #EBBB40;
+      margin-bottom: 25px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- HEADER -->
+  <div class="header">
+    <video autoplay muted loop playsinline class="header-video">
+      <source src="/static/beer-header.mp4" type="video/mp4">
+    </video>
+
+    <div class="header-content">
+      <img src="/static/pp-logo.png" alt="Predict & Pour Logo" width="100" style="margin-right: 15px;">
+      <div>
+        <h1>Privacy Policy</h1>
+        <p>Your Data, Your Privacy</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <!-- NAVIGATION -->
+    <div style="margin: 10px 0; padding: 2px 0; border-bottom: 1px solid #333;">
+      <a href="/" class="nav-link">
+        <img src="/static/pp-logo.png" alt="Home" style="height: 20px; vertical-align: middle; margin-right: 5px;">
+        Back to Home
+      </a>
+      |
+      <a href="/predict" class="nav-link">
+        <img src="/static/predict-logo.png" alt="Predict" style="height: 20px; vertical-align: middle; margin-right: 5px;">
+        Go to Predict
+      </a>
+      |
+      <a href="/pour" class="nav-link">
+        <img src="/static/pour-logo.png" alt="Pour" style="height: 20px; vertical-align: middle; margin-right: 5px;">
+        Go to Pour
+      </a>
+    </div>
+
+    <!-- MAIN PRIVACY CONTENT -->
+    <div class="panel">
+      <div class="effective-date">
+        <strong>Effective Date:</strong> December 30, 2025<br>
+        <strong>Last Updated:</strong> December 30, 2025
+      </div>
+
+      <p class="intro-text">At Predict & Pour, we take your privacy seriously. This privacy policy explains how we collect, use, store, and protect your information when you use our forecasting platform and Chrome extension.</p>
+
+      <h2>📊 What Information We Collect</h2>
+
+      <h3>1. Account Information (Web Application)</h3>
+      <ul>
+        <li><strong>Username:</strong> Your chosen username for authentication</li>
+        <li><strong>Email address:</strong> For account identification and communication</li>
+        <li><strong>Password:</strong> Stored as an encrypted hash (we never see your actual password)</li>
+        <li><strong>Last login timestamp:</strong> To track account activity</li>
+      </ul>
+
+      <h3>2. Forecast Data (Web Application & Extension)</h3>
+      <div class="highlight-box">
+        <h3>🔒 Your Forecast Data Stays Private</h3>
+        <p><strong>Important:</strong> Your forecast numbers and sales data are <strong>never sent to our servers</strong>. Here's how your data is handled:</p>
+        <ul>
+          <li><strong>Web Application (Predict):</strong> When you upload Excel files for forecasting, your data is processed <em>in your browser session only</em> and temporarily on our server for calculations. We do not store your raw sales data, SKU information, or forecast values.</li>
+          <li><strong>Chrome Extension (Pour):</strong> Your uploaded forecast Excel files are stored <em>only in your browser's local storage</em>. We cannot see, access, or retrieve this data from our end.</li>
+          <li><strong>Session-Only Storage:</strong> All forecast data is cleared when you close your browser or log out.</li>
+        </ul>
+        <p><strong>Bottom Line:</strong> We have no access to your competitive sales data, forecasts, or business intelligence. Your numbers are yours alone.</p>
+      </div>
+
+      <h3>3. Technical Information</h3>
+      <ul>
+        <li><strong>Session cookies:</strong> To keep you logged in securely</li>
+        <li><strong>Browser type and version:</strong> For compatibility and troubleshooting</li>
+        <li><strong>Access logs:</strong> IP addresses and timestamps for security purposes</li>
+      </ul>
+
+      <h2>🔐 How We Use Your Information</h2>
+
+      <h3>Web Application (Predict & Pour System)</h3>
+      <ul>
+        <li><strong>Authentication:</strong> Verify your identity when you log in</li>
+        <li><strong>Forecasting Calculations:</strong> Process your uploaded data to generate forecasts (data is not stored after processing)</li>
+        <li><strong>Service Delivery:</strong> Provide you with forecast reports and Excel exports</li>
+        <li><strong>Account Security:</strong> Monitor for suspicious login activity</li>
+      </ul>
+
+      <h3>Chrome Extension (Pour)</h3>
+      <ul>
+        <li><strong>Authentication Check:</strong> Verify you're logged in to enable the extension</li>
+        <li><strong>Data Transfer:</strong> Read your locally-stored forecast data and fill it into OnePortal (this happens entirely in your browser)</li>
+        <li><strong>Session Management:</strong> Maintain your login state between the extension and web application</li>
+      </ul>
+
+      <h2>💾 How We Store Your Information</h2>
+
+      <h3>Server Storage (Secure Database)</h3>
+      <ul>
+        <li><strong>Account credentials:</strong> Stored in encrypted SQLite database with bcrypt password hashing</li>
+        <li><strong>User metadata:</strong> Account creation dates, last login times</li>
+        <li><strong>Location:</strong> Azure Cloud infrastructure in the United States</li>
+      </ul>
+
+      <h3>Local Storage (Your Browser Only)</h3>
+      <ul>
+        <li><strong>Extension data:</strong> Uploaded forecast Excel files stored in Chrome's local storage API</li>
+        <li><strong>Session cookies:</strong> Authentication tokens (cleared when you log out)</li>
+      </ul>
+
+      <div class="warning-box">
+        <h3>⚠️ What We DON'T Store</h3>
+        <ul>
+          <li>❌ Your raw sales data or forecast numbers</li>
+          <li>❌ SKU/PDCN-specific information</li>
+          <li>❌ OnePortal credentials or access tokens</li>
+          <li>❌ Excel file contents on our servers</li>
+          <li>❌ Any personally identifiable business intelligence</li>
+        </ul>
+      </div>
+
+      <h2>🤝 Data Sharing & Third Parties</h2>
+
+      <p><strong>We do not sell, trade, rent, or share your personal information with third parties.</strong> Period.</p>
+
+      <h3>Limited Exceptions:</h3>
+      <ul>
+        <li><strong>Azure Cloud Services:</strong> Our hosting provider (Microsoft Azure) has access to infrastructure but not to your unencrypted data</li>
+        <li><strong>Legal Requirements:</strong> We may disclose information if required by law, court order, or government request</li>
+        <li><strong>Security Incidents:</strong> In the event of a data breach, we will notify affected users as required by law</li>
+      </ul>
+
+      <h2>🛡️ Security Measures</h2>
+
+      <p>We implement industry-standard security practices to protect your data:</p>
+
+      <ul>
+        <li><strong>Encryption:</strong> All data transmitted between your browser and our servers uses HTTPS/TLS encryption</li>
+        <li><strong>Password Security:</strong> Passwords are hashed using bcrypt (one-way encryption) and never stored in plain text</li>
+        <li><strong>Session Management:</strong> Secure session cookies with HttpOnly and SameSite flags</li>
+        <li><strong>Access Control:</strong> Limited access to production systems and databases</li>
+        <li><strong>Regular Updates:</strong> We keep our software dependencies up-to-date with security patches</li>
+      </ul>
+
+      <h2>👤 Your Rights & Choices</h2>
+
+      <h3>You Have the Right To:</h3>
+      <ul>
+        <li><strong>Access:</strong> Request a copy of your account information</li>
+        <li><strong>Delete:</strong> Request deletion of your account and associated data</li>
+        <li><strong>Correct:</strong> Update your email or username information</li>
+        <li><strong>Opt-Out:</strong> Stop using the service at any time</li>
+      </ul>
+
+      <h3>Managing Your Data:</h3>
+      <ul>
+        <li><strong>Clear Extension Data:</strong> Click the "Clear" button in the Pour extension popup to delete locally-stored forecast data</li>
+        <li><strong>Log Out:</strong> Logging out clears your session cookies</li>
+        <li><strong>Account Deletion:</strong> Contact us at aaron@predictandpour.com to delete your account</li>
+      </ul>
+
+      <h2>🌐 Third-Party Services</h2>
+
+      <h3>OnePortal Integration</h3>
+      <p>The Pour extension interacts with OnePortal (oneportal.beertech.com) to fill forecast data. We do not control OnePortal's privacy practices. Your use of OnePortal is subject to their own privacy policy.</p>
+
+      <h3>Chrome Web Store</h3>
+      <p>When you install the Pour extension from the Chrome Web Store, Google's privacy policy applies to the installation process. We do not receive any personal information from Google about your installation.</p>
+
+      <h2>🔄 Data Retention</h2>
+
+      <ul>
+        <li><strong>Account Data:</strong> Retained while your account is active</li>
+        <li><strong>Login Records:</strong> Kept for 90 days for security purposes</li>
+        <li><strong>Deleted Accounts:</strong> Permanently removed within 30 days of deletion request</li>
+        <li><strong>Forecast Data:</strong> Not retained (processed in memory only during active sessions)</li>
+      </ul>
+
+      <h2>👨‍💼 Business Transfers</h2>
+
+      <p>In the event that Predict & Pour is acquired by or merged with another company, user data may be transferred. We will notify you via email before any such transfer and provide options for account deletion if desired.</p>
+
+      <h2>📝 Changes to This Policy</h2>
+
+      <p>We may update this privacy policy from time to time. When we do:</p>
+      <ul>
+        <li>We will update the "Last Updated" date at the top of this page</li>
+        <li>For material changes, we will notify you via email</li>
+        <li>Continued use of the service after changes constitutes acceptance</li>
+      </ul>
+
+      <h2>📧 Contact Us</h2>
+
+      <div class="contact-box">
+        <p>If you have questions, concerns, or requests regarding this privacy policy or your data:</p>
+        <p style="margin-top: 15px;">
+          <strong>Email:</strong> <a href="mailto:aaron@predictandpour.com">aaron@predictandpour.com</a><br>
+          <strong>Website:</strong> <a href="https://www.predictandpour.com">www.predictandpour.com</a>
+        </p>
+        <p style="margin-top: 15px; font-size: 0.9em; color: #ccc;">
+          We typically respond to privacy inquiries within 48 business hours.
+        </p>
+      </div>
+
+      <h2>✅ Your Consent</h2>
+
+      <p>By using the Predict & Pour web application or Pour Chrome extension, you acknowledge that you have read and understood this privacy policy and agree to its terms.</p>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="pp-footer">
+    <div class="pp-footer-line"></div>
+
+    <div class="pp-footer-links">
+      <a href="/static/about.html">About</a>
+      <span>•</span>
+      <a href="mailto:aaron@predictandpour.com">Support</a>
+      <span>•</span>
+      <a href="/static/faqs.html">FAQs & Resources</a>
+      <span>•</span>
+      <a href="/static/privacy.html">Privacy Policy</a>
+    </div>
+
+    <div class="pp-footer-copy">
+      © <span id="ppYear"></span> Predict & Pour LLC. All rights reserved.
+    </div>
+  </div>
+
+  <script>
+    // Auto-update year
+    document.getElementById("ppYear").textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>

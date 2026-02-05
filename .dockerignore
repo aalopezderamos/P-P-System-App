@@ -10,6 +10,10 @@ __pycache__/
 catboost_info/
 lightning_logs/
 index_files/
+create_first_user.py
+users.db
+*.db
+*.pyc
 
 # misc
 .DS_Store

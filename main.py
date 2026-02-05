@@ -12,6 +12,8 @@ import os
 import secrets
 from fastapi import HTTPException
 
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+
 import numpy as np
 import pandas as pd
 import xlsxwriter
@@ -31,6 +33,13 @@ from prophet import Prophet
 from pytorch_lightning.callbacks import EarlyStopping
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.statespace.sarimax import SARIMAX
+
+# Password Database Imports
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from passlib.context import CryptContext
+from datetime import datetime
 
 warnings.filterwarnings("ignore")
 
@@ -78,20 +87,79 @@ app = FastAPI(title="Predict & Pour System", version="1.0.0")
 @app.get("/health")
 def health():
     return {"status": "ok"}
+# =====================================================================
+# SQLite Database Setup for User Management
+# =====================================================================
+
+# Password hashing context
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# SQLite database (creates users.db file in your app directory)
+# Use /data directory for persistent storage in Azure
+DB_PATH = os.getenv("DB_PATH", "./users.db")
+DATABASE_URL = f"sqlite:///{DB_PATH}"
+
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False}  # Needed for SQLite
+)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# User model
+class User(Base):
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime, nullable=True)
+
+# Create tables on startup
+Base.metadata.create_all(bind=engine)
+
+# Helper functions
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a password against its hash"""
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password: str) -> str:
+    """Generate password hash"""
+    return pwd_context.hash(password)
 
 # --- Auth / Session cookie ---
 SESSION_SECRET = os.getenv("PP_SESSION_SECRET", "dev-" + secrets.token_hex(16))
+
+# In production on https (predictandpour.com), cookies must be:
+#   SameSite=None; Secure
+# for chrome-extension requests to include them.
+COOKIE_SECURE = os.getenv("PP_COOKIE_SECURE", "1") == "1"  # set to "0" for local http testing if needed
+COOKIE_SAMESITE = "none" if COOKIE_SECURE else "lax"
+
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET,
-    same_site="lax",
-    https_only=False,  # set True when deployed on https
+    same_site=COOKIE_SAMESITE,
+    https_only=COOKIE_SECURE,  # Secure cookies when on https
 )
 
-# CORS middleware
+# CORS middleware (must NOT use "*" when credentials are included)
+EXTENSION_ORIGIN = "chrome-extension://ldhidomnhijcplnggafamecchbdnhnjl"
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://www.predictandpour.com",
+        "https://predictandpour.com",
+        EXTENSION_ORIGIN,
+
+        # Optional dev fallbacks (won't hurt production)
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -297,8 +365,6 @@ def run_neuralprophet(df_sku: pd.DataFrame, holidays_df: pd.DataFrame, horizon_w
         epochs=50,                      # ← Reduced from default ~100-200 (2-4x faster)
         batch_size=32,                  # ← Explicit batch size (faster)
         learning_rate=0.1,              # ← Faster learning (default ~0.01)
-        num_hidden_layers=1,            # ← Reduced from default 2 (2x faster)
-        d_hidden=32,                    # ← Smaller network (default 64, 2x faster)
     )
     for ev in event_names:
         m.add_events(ev, lower_window=-3, upper_window=3)
@@ -399,7 +465,6 @@ def run_xgboost(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
         colsample_bytree=0.8,       # ← Keep
         objective="reg:squarederror",
         random_state=42,
-        early_stopping_rounds=10    # ← NEW: Stop early if not improving
     )
     model.fit(X_train, y_train)
     preds_in = model.predict(X_train)
@@ -639,16 +704,73 @@ async def auth_me(request: Request):
 
 @app.post("/api/auth/login")
 async def auth_login(request: Request, username: str = Form(...), password: str = Form(...)):
-    # For MVP: single admin credential from env vars
-    # Set these in your terminal: PP_ADMIN_USER / PP_ADMIN_PASS
-    admin_user = os.getenv("PP_ADMIN_USER", "Aaron")
-    admin_pass = os.getenv("PP_ADMIN_PASS", "Allmight881")
+    """Login with database authentication"""
+    db = SessionLocal()
+    try:
+        # Find user by username
+        user = db.query(User).filter(User.username == username).first()
+        
+        # Check if user exists and password is correct
+        if not user or not verify_password(password, user.password_hash):
+            raise HTTPException(status_code=401, detail="Invalid username/password")
+        
+        # Check if account is active
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="Account disabled")
+        
+        # Update last login time
+        user.last_login = datetime.utcnow()
+        db.commit()
+        
+        # Store session info
+        request.session["pp_logged_in"] = True
+        request.session["user_id"] = user.id
+        request.session["username"] = user.username
+        
+        return {"status": "ok", "username": user.username}
+    finally:
+        db.close()
 
-    if username != admin_user or password != admin_pass:
-        raise HTTPException(status_code=401, detail="Invalid username/password")
-
-    request.session["pp_logged_in"] = True
-    return {"status": "ok"}
+@app.post("/api/auth/register")
+async def auth_register(
+    username: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...)
+):
+    """Register a new user"""
+    db = SessionLocal()
+    try:
+        # Check if username or email already exists
+        existing = db.query(User).filter(
+            (User.username == username) | (User.email == email)
+        ).first()
+        
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail="Username or email already registered"
+            )
+        
+        # Create new user
+        new_user = User(
+            username=username,
+            email=email,
+            password_hash=get_password_hash(password),
+            is_active=True,
+            created_at=datetime.utcnow()
+        )
+        
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        
+        return {
+            "status": "ok",
+            "message": "User created successfully",
+            "username": new_user.username
+        }
+    finally:
+        db.close()
 
 @app.post("/api/auth/logout")
 async def auth_logout(request: Request):
@@ -1076,11 +1198,13 @@ async def root(request: Request):
         <div class="pp-footer-line"></div>
 
         <div class="pp-footer-links">
-        <a href="/static/about.html">About</a>
-        <span>•</span>
-        <a href="mailto:Aaron@predictandpour.com">Support</a>
-        <span>•</span>
-        <a href="/static/faqs.html">FAQs &amp; Resources</a>
+            <a href="/static/about.html">About</a>
+            <span>•</span>
+            <a href="mailto:aaron@predictandpour.com">Support</a>
+            <span>•</span>
+            <a href="/static/faqs.html">FAQs & Resources</a>
+            <span>•</span>
+            <a href="/static/privacy.html">Privacy Policy</a>
         </div>
 
         <div class="pp-footer-copy">
@@ -1325,9 +1449,20 @@ def process_single_sku(
         ]:
             pred_col = f"{model_prefix}_yhat"
             if pred_col in base.columns:
-                base[f"{model_prefix}_acc"] = base.apply(
-                    lambda r: safe_accuracy(r.get("y"), r.get(pred_col)), axis=1
+                # Vectorized calculation instead of apply()
+                y_vals = base["y"]
+                pred_vals = base[pred_col]
+                
+                # Create mask for valid calculations
+                mask = (y_vals.notna()) & (y_vals != 0) & (pred_vals.notna())
+                
+                # Vectorized accuracy calculation
+                accuracy = np.where(
+                    mask,
+                    np.round(1 - np.abs((y_vals - pred_vals) / y_vals), 3),
+                    np.nan
                 )
+                base[f"{model_prefix}_acc"] = accuracy
 
         base["sku_id"] = sku
         return base
