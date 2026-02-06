@@ -25,7 +25,7 @@
         }
         .header { 
             position: relative;
-            overflow: hidden;
+            overflow: visible;
             color: #EBBB40; 
             padding: 20px; 
             text-align: center; 
@@ -63,6 +63,251 @@
             paint-order: stroke fill;
             margin: 0;
             font-size: 22px;
+        }
+        /* Account Dropdown Styles */
+        .account-widget {
+            position: absolute;
+            bottom: 8px;
+            right: 20px;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .account-trigger {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid #EBBB40;
+            border-radius: 25px;
+            transition: all 0.3s;
+        }
+
+        .account-trigger:hover {
+            background: rgba(235, 187, 64, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .account-circle {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            background: #EBBB40;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            color: #000;
+        }
+
+        .account-circle.logged-out {
+            background: #333;
+            color: #EBBB40;
+        }
+
+        .account-name {
+            color: #EBBB40;
+            font-weight: bold;
+            font-size: 14px;
+            -webkit-text-stroke: 1px #000;
+            paint-order: stroke fill;
+        }
+
+        .account-dropdown {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            background: rgba(20, 20, 20, 0.95);
+            border: 2px solid #EBBB40;
+            border-radius: 12px;
+            min-width: 250px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+            display: none;
+            overflow: hidden;
+        }
+
+        .account-dropdown.show {
+            display: block;
+        }
+
+        .dropdown-item {
+            padding: 12px 16px;
+            color: #fff;
+            cursor: pointer;
+            transition: background 0.2s;
+            border-bottom: 1px solid rgba(235, 187, 64, 0.2);
+        }
+
+        .dropdown-item:last-child {
+            border-bottom: none;
+        }
+
+        .dropdown-item:hover {
+            background: rgba(235, 187, 64, 0.2);
+        }
+
+        .dropdown-item.logout {
+            color: #ff6b6b;
+            font-weight: bold;
+        }
+
+        /* Login Modal Styles */
+        .login-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-modal.show {
+            display: flex;
+        }
+
+        .login-box {
+            background: url("/static/wood-texture.jpg") center center;
+            background-size: cover;
+            border: 3px solid #EBBB40;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 400px;
+            width: 90%;
+            position: relative;
+            box-shadow: 0 25px 80px rgba(0, 0, 0, 0.9);
+        }
+
+        .login-box::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 0;
+            border-radius: 14px;
+        }
+
+        .login-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .login-header img {
+            width: 80px;
+            margin-bottom: 10px;
+        }
+
+        .login-header h2 {
+            color: #EBBB40;
+            margin: 10px 0 5px 0;
+            font-size: 26px;
+        }
+
+        .login-header p {
+            color: #ddd;
+            margin: 0;
+            font-size: 14px;
+        }
+
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-group label {
+            color: #EBBB40;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .form-group input {
+            padding: 12px;
+            border: 2px solid #EBBB40;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            font-size: 14px;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #EBBB40;
+            background: rgba(0, 0, 0, 0.8);
+        }
+
+        .login-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .btn-login {
+            flex: 1;
+            padding: 12px;
+            background: #EBBB40;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 15px;
+            transition: all 0.3s;
+        }
+
+        .btn-login:hover {
+            background: #d4a634;
+            transform: translateY(-2px);
+        }
+
+        .btn-cancel {
+            flex: 1;
+            padding: 12px;
+            background: transparent;
+            color: #EBBB40;
+            border: 2px solid #EBBB40;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 15px;
+            transition: all 0.3s;
+        }
+
+        .btn-cancel:hover {
+            background: rgba(235, 187, 64, 0.1);
+        }
+
+        .login-error {
+            background: rgba(255, 107, 107, 0.2);
+            border: 2px solid #ff6b6b;
+            color: #ff6b6b;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 13px;
+            display: none;
+        }
+
+        .login-error.show {
+            display: block;
         }
         .preset-section {
             background: url("/static/wood-texture.jpg") center center;
@@ -331,10 +576,11 @@
         }
 
         .pp-footer-links a{
-        color: #EBBB40;
-        text-decoration: none;
-        font-weight: 700;
-        margin: 0 6px;
+            color: #EBBB40;
+            text-decoration: none;
+            font-weight: 700;
+            margin: 0 6px;
+            font-size: 16px;
         }
 
         .pp-footer-links a:hover{
@@ -342,9 +588,9 @@
         }
 
         .pp-footer-copy{
-        font-size: 12px;
-        opacity: 0.75;
-        }       
+            font-size: 15px;
+            opacity: 0.75;
+        }      
     </style>
 </head>
 <body>
@@ -353,10 +599,49 @@
             <source src="/static/beer-header.mp4" type="video/mp4">
         </video>
         <div class="header-content">
-            <img src="/static/pp-logo.png" alt="Predict & Pour Logo" width="100" style="margin-right: 15px;">
+            <img src="/static/predict-logo.png" alt="Predict & Pour Logo" width="100" style="margin-right: 15px;">
             <div>
                 <h1>Predict & Pour - Forecasting App</h1>
                 <p>Multi-Model Forecasting System</p>
+            </div>
+        </div>
+
+        <!-- Account Widget -->
+        <div class="account-widget">
+            <div class="account-trigger" id="accountTrigger">
+                <div class="account-circle logged-out" id="accountCircle">—</div>
+                <span class="account-name" id="accountName">Login</span>
+            </div>
+            <div class="account-dropdown" id="accountDropdown">
+                <div class="dropdown-item logout" id="logoutBtn">Logout</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div class="login-modal" id="loginModal">
+        <div class="login-box">
+            <div class="login-content">
+                <div class="login-header">
+                    <img src="/static/predict-logo.png" alt="Predict & Pour">
+                    <h2>Login Required</h2>
+                    <p>Please login to use forecasting features</p>
+                </div>
+                <div class="login-error" id="loginError"></div>
+                <form class="login-form" id="loginForm">
+                    <div class="form-group">
+                        <label for="loginUsername">Username</label>
+                        <input type="text" id="loginUsername" required autocomplete="username">
+                    </div>
+                    <div class="form-group">
+                        <label for="loginPassword">Password</label>
+                        <input type="password" id="loginPassword" required autocomplete="current-password">
+                    </div>
+                    <div class="login-actions">
+                        <button type="submit" class="btn-login">Login</button>
+                        <button type="button" class="btn-cancel" id="cancelLogin">Cancel</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -502,7 +787,7 @@
             </div>
         </div>
         <div style="text-align: center; margin: 30px 0;">
-            <button id="startBtn" disabled onclick="startForecast()">🚀 Start Forecasting</button>
+            <button id="startBtn" disabled onclick="handleStartForecast()">🚀 Start Forecasting</button>
         </div>
 
         <div id="status" class="status">
@@ -524,7 +809,159 @@
     </div>
 
     <script>
+        // ============================================
+        // GLOBAL STATE - NEW: Added currentUser
+        // ============================================
         let selectedFile = null;
+        let selectedAbFile = null;
+        let abortController = null;
+        let timerInterval = null;
+        let startTime = null;
+        let currentUser = null; // NEW: Track logged-in user
+
+        // ============================================
+        // AUTH & ACCOUNT DROPDOWN - NEW SECTION
+        // ============================================
+        
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch('/api/auth/me', {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                
+                if (data.logged_in) {
+                    currentUser = { username: data.username || 'User' };
+                    updateAccountWidget(true, currentUser.username);
+                } else {
+                    currentUser = null;
+                    updateAccountWidget(false);
+                }
+            } catch (error) {
+                console.error('Auth check error:', error);
+                updateAccountWidget(false);
+            }
+        }
+
+        function updateAccountWidget(isLoggedIn, username = '') {
+            const circle = document.getElementById('accountCircle');
+            const name = document.getElementById('accountName');
+            
+            if (isLoggedIn && username) {
+                // Extract initials
+                const parts = username.split(/[\s._-]+/);
+                let initials = '';
+                if (parts.length >= 2) {
+                    initials = parts[0][0].toUpperCase() + parts[1][0].toUpperCase();
+                } else {
+                    initials = username.substring(0, 2).toUpperCase();
+                }
+                
+                circle.textContent = initials;
+                circle.classList.remove('logged-out');
+                name.textContent = username;
+            } else {
+                circle.textContent = '—';
+                circle.classList.add('logged-out');
+                name.textContent = 'Login';
+            }
+        }
+
+        // Account dropdown toggle
+        document.getElementById('accountTrigger').addEventListener('click', function(e) {
+            e.stopPropagation();
+            const dropdown = document.getElementById('accountDropdown');
+            
+            if (currentUser) {
+                dropdown.classList.toggle('show');
+            } else {
+                showLoginModal();
+            }
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function() {
+            document.getElementById('accountDropdown').classList.remove('show');
+        });
+
+        // Logout
+        document.getElementById('logoutBtn').addEventListener('click', async function() {
+            try {
+                await fetch('/api/auth/logout', {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                currentUser = null;
+                updateAccountWidget(false);
+                document.getElementById('accountDropdown').classList.remove('show');
+                showAlert('Logged out successfully', 'info');
+            } catch (error) {
+                console.error('Logout error:', error);
+            }
+        });
+
+        // ============================================
+        // LOGIN MODAL - NEW SECTION
+        // ============================================
+        
+        function showLoginModal() {
+            document.getElementById('loginModal').classList.add('show');
+            document.getElementById('loginUsername').focus();
+        }
+
+        function hideLoginModal() {
+            document.getElementById('loginModal').classList.remove('show');
+            document.getElementById('loginForm').reset();
+            document.getElementById('loginError').classList.remove('show');
+        }
+
+        document.getElementById('cancelLogin').addEventListener('click', hideLoginModal);
+
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+            const errorDiv = document.getElementById('loginError');
+            
+            errorDiv.classList.remove('show');
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`,
+                    credentials: 'include'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'ok') {
+                    currentUser = { username: data.username };
+                    updateAccountWidget(true, data.username);
+                    hideLoginModal();
+                    showAlert('Login successful!', 'success');
+                    
+                    // If they were trying to start forecast, do it now
+                    if (window.pendingForecastStart) {
+                        window.pendingForecastStart = false;
+                        startForecast();
+                    }
+                } else {
+                    errorDiv.textContent = data.detail || 'Login failed';
+                    errorDiv.classList.add('show');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                errorDiv.textContent = 'Network error. Please try again.';
+                errorDiv.classList.add('show');
+            }
+        });
+
+        // ============================================
+        // PRESET HANDLING - EXISTING CODE
+        // ============================================
+        
         // Model preset configurations
         const presets = {
             quick: {
@@ -606,6 +1043,11 @@
                 });
             });
         });        
+
+        // ============================================
+        // FILE UPLOAD HANDLERS - EXISTING CODE
+        // ============================================
+        
         document.getElementById('fileInput').onchange = function(e) {
             selectedFile = e.target.files[0];
             if (selectedFile) {
@@ -615,7 +1057,6 @@
             }
         };
 
-        let selectedAbFile = null;
         document.getElementById('abFileInput').onchange = function(e) {
             selectedAbFile = e.target.files[0];
             if (selectedAbFile) {
@@ -624,9 +1065,20 @@
             }
         };
 
-        let abortController = null;
-        let timerInterval = null;
-        let startTime = null;
+        // ============================================
+        // FORECAST FUNCTIONS - EXISTING CODE (MODIFIED)
+        // ============================================
+
+        function handleStartForecast() {
+            if (!currentUser) {
+                // User not logged in - show login modal
+                window.pendingForecastStart = true;
+                showLoginModal();
+                return;
+            }
+            // User is logged in - start forecast
+            startForecast();
+        }
 
         async function startForecast() {
             if (!selectedFile) return;
@@ -673,6 +1125,7 @@
                 const response = await fetch('/api/forecast', {
                     method: 'POST',
                     body: formData,
+                    credentials: 'include', // MODIFIED: Added credentials
                     signal: abortController.signal
                 });
 
@@ -699,6 +1152,7 @@
                     await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3 seconds
                     
                     const statusResponse = await fetch(`/api/forecast/status/${jobId}`, {
+                        credentials: 'include', // MODIFIED: Added credentials
                         signal: abortController.signal
                     });
                     
@@ -728,6 +1182,7 @@
                 stopTimer();
                 
                 const downloadResponse = await fetch(`/api/forecast/download/${jobId}`, {
+                    credentials: 'include', // MODIFIED: Added credentials
                     signal: abortController.signal
                 });
                 
@@ -817,6 +1272,12 @@
             document.getElementById('alerts').appendChild(div);
             if (type === 'info') setTimeout(() => div.remove(), 5000);
         }
+
+        // ============================================
+        // INITIALIZATION - NEW: Check auth on load
+        // ============================================
+        
+        checkAuthStatus();
     </script>
         <!-- FOOTER -->
         <div class="pp-footer">
