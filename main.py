@@ -40,6 +40,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from passlib.context import CryptContext
 from datetime import datetime
+from pathlib import Path
 
 warnings.filterwarnings("ignore")
 
@@ -97,6 +98,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # SQLite database (creates users.db file in your app directory)
 # Use /data directory for persistent storage in Azure
 DB_PATH = os.getenv("DB_PATH", "./users.db")
+Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 engine = create_engine(
