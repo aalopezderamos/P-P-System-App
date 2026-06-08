@@ -1,28 +1,34 @@
-# virtual env / python junk
+# Virtual environment — never goes in the container
 venv/
 .venv/
+
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-# logs / training artifacts
-catboost_info/
+# ML training artifacts / logs — regenerated at runtime
 lightning_logs/
+catboost_info/
 index_files/
-create_first_user.py
+
+# Local database — should not ship in the image
 users.db
 *.db
-*.pyc
 
-# misc
-.DS_Store
+# User management scripts — not needed in the running container
+add_users.py
+create_first_user.py
+
+# Git
 .git/
-.github/
-**/__pycache__/
-*.pt
-*.pth
-*.ckpt
-*.pkl
-*.joblib
-*.onnx
+.gitignore
+
+# OS / editor junk
+.DS_Store
+*.swp
+
+# Docker
+Dockerfile
+.dockerignore

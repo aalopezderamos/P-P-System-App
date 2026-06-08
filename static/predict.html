@@ -791,7 +791,7 @@
         </div>
 
         <div id="status" class="status">
-            <h3>Processing Forecast...</h3>
+            <h3 id="statusHeading">Processing Forecast...</h3>
             <div class="progress-container">
                 <div class="progress-bar">
                     <div class="progress-fill" id="progressBar"></div>
@@ -799,6 +799,7 @@
                 <div class="progress-text" id="progressText">0%</div>
             </div>
             <p id="statusMsg">Initializing...</p>
+            <div id="modelTracker" style="margin: 12px 0; font-size: 15px; color: #ccc; letter-spacing: 0.5px; min-height: 22px;"></div>
             <div class="timer-section">
                 <span>⏱️ Elapsed Time: <strong id="elapsedTime">00:00</strong></span>
             </div>
@@ -1119,7 +1120,7 @@
             }
 
             try {
-                document.getElementById('statusMsg').textContent = 'Starting forecast... this may take several minutes.';
+                document.getElementById('statusMsg').textContent = 'Warming up the brewery... Preparing forecast';
                 
                 // Step 1: Start the forecast job
                 const response = await fetch('/api/forecast', {
@@ -1138,21 +1139,19 @@
                 const jobId = startData.job_id;
                 
                 console.log('Forecast job started:', jobId);
-                document.getElementById('statusMsg').textContent = 'Forecast processing... checking status...';
+                document.getElementById('statusMsg').textContent = 'Warming up the brewery... Loading models';
+                document.getElementById('modelTracker').textContent = '';
                 
-                // Simulate progress
-                simulateProgress();
-                
-                // Step 2: Poll for completion
+                // Step 2: Poll for completion with real progress
                 let status = 'processing';
                 let attempts = 0;
                 const maxAttempts = 600; // 30 minutes max (600 * 3 seconds)
                 
                 while (status === 'processing' && attempts < maxAttempts) {
-                    await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3 seconds
+                    await new Promise(resolve => setTimeout(resolve, 2000)); // Poll every 2 seconds
                     
                     const statusResponse = await fetch(`/api/forecast/status/${jobId}`, {
-                        credentials: 'include', // MODIFIED: Added credentials
+                        credentials: 'include',
                         signal: abortController.signal
                     });
                     
@@ -1163,10 +1162,27 @@
                     const statusData = await statusResponse.json();
                     status = statusData.status;
                     
-                    console.log(`Status check ${attempts + 1}: ${status}`);
+                    console.log(`Status check ${attempts + 1}: ${status} | ${statusData.stage} | ${statusData.detail}`);
                     
                     if (status === 'error') {
                         throw new Error(statusData.error || 'Forecast processing failed');
+                    }
+                    
+                    // Update progress bar from real data
+                    if (statusData.progress !== undefined) {
+                        updateProgress(statusData.progress);
+                    }
+                    
+                    // Update status message
+                    if (statusData.detail) {
+                        document.getElementById('statusMsg').textContent = statusData.detail;
+                    }
+                    
+                    // Update model tracker badges
+                    if (statusData.model_status && Object.keys(statusData.model_status).length > 0) {
+                        updateModelTracker(statusData.model_status);
+                    } else if (statusData.stage === 'exporting' || statusData.stage === 'loading') {
+                        document.getElementById('modelTracker').textContent = '';
                     }
                     
                     attempts++;
@@ -1177,7 +1193,8 @@
                 }
                 
                 // Step 3: Download the completed file
-                document.getElementById('statusMsg').textContent = 'Forecast complete! Downloading...';
+                document.getElementById('statusMsg').textContent = '🍻 Forecast complete! Pouring your download...';
+                document.getElementById('modelTracker').textContent = '';
                 updateProgress(100);
                 stopTimer();
                 
@@ -1224,6 +1241,7 @@
                 stopTimer();
                 updateProgress(0);
                 document.getElementById('statusMsg').textContent = 'Stopping...';
+                document.getElementById('modelTracker').textContent = '';
             }
         }
 
@@ -1234,17 +1252,23 @@
             progressText.textContent = Math.round(percent) + '%';
         }
 
-        function simulateProgress() {
-            let progress = 0;
-            const progressInterval = setInterval(() => {
-                if (progress < 90) {
-                    progress += Math.random() * 3;
-                    updateProgress(Math.min(progress, 90));
+        function updateModelTracker(modelStatus) {
+            const tracker = document.getElementById('modelTracker');
+            if (!tracker) return;
+            
+            const badges = Object.entries(modelStatus).map(([abbrev, state]) => {
+                if (state === 'done') {
+                    return `<span style="color: #4CAF50; font-weight: bold;">${abbrev} ✔</span>`;
+                } else if (state === 'running') {
+                    return `<span style="color: #EBBB40; font-weight: bold;">${abbrev} ⏳</span>`;
+                } else if (state === 'failed') {
+                    return `<span style="color: #ff6b6b; font-weight: bold;">${abbrev} ✘</span>`;
+                } else {
+                    return `<span style="color: #666;">${abbrev} ·</span>`;
                 }
-                if (!abortController) {
-                    clearInterval(progressInterval);
-                }
-            }, 500);
+            });
+            
+            tracker.innerHTML = badges.join('&nbsp;&nbsp;');
         }
 
         function startTimer() {

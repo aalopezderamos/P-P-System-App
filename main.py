@@ -1,6 +1,6 @@
 import warnings
 from io import BytesIO
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, List, Dict
 import asyncio
 import json
@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import xlsxwriter
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Form
-from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse, FileResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -81,6 +81,18 @@ if _HAS_NEURALPROPHET:
 # Constants
 WEEK_FREQ = "W-SAT"
 PI_Z_90 = 1.645
+
+# Beer model abbreviations for status updates
+MODEL_ABBREV = {
+    "house_lager": "HL",
+    "mind_melt_double_ipa": "MM",
+    "heritage_blend": "HB",
+    "west_coast_ipa": "WCI",
+    "creamy_nitro": "CN",
+    "small_batch_classic": "SBC",
+    "light_hazy": "LH",
+    "legacy_grand_reserve": "LGR",
+}
 
 # Create FastAPI app
 app = FastAPI(title="Predict & Pour System", version="1.0.0")
@@ -807,686 +819,9 @@ async def auth_logout(request: Request):
 # =====================================================================
 
 @app.get("/")
-async def root(request: Request):
-    """Homepage with navigation to both apps (locked until login)"""
-
-    logged_in = bool(request.session.get("pp_logged_in"))
-
-    # =========================
-    # MAIN PAGE HTML
-    # =========================
-    page_html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Predict & Pour</title>
-        <style>
-            body {
-                margin: 0;
-                font-family: Arial, sans-serif;
-                background: #000;
-                color: #fff;
-                position: relative;
-            }
-            body::before {
-                content: '';
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: url("/static/background-texture.png") repeat;
-                opacity: 0.18;
-                z-index: -1;
-                pointer-events: none;
-            }
-
-            /* VIDEO HEADER */
-            .header {
-                position: relative;
-                overflow: visible;
-                color: #EBBB40;
-                padding: 20px;
-                text-align: center;
-                border-bottom: 3px solid #EBBB40;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                min-height: 150px;
-            }
-            .header-video {
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-                z-index: 0;
-            }
-            .header-content {
-                position: relative;
-                z-index: 2;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                flex-direction: column;
-            }
-            .header h1 {
-                -webkit-text-stroke: 4px #000;
-                text-stroke: 4px #000;
-                paint-order: stroke fill;
-                margin: 10px 0;
-                font-size: 48px;
-            }
-            .header p {
-                -webkit-text-stroke: 3px #000;
-                text-stroke: 3px #000;
-                paint-order: stroke fill;
-                margin: 0;
-                font-size: 26px;
-            }
-
-            /* Account Dropdown Styles */
-            .account-widget {
-                position: absolute;
-                bottom: 8px;
-                right: 20px;
-                z-index: 10;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-            }
-
-            .account-trigger {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                cursor: pointer;
-                padding: 8px 12px;
-                background: rgba(0, 0, 0, 0.6);
-                border: 2px solid #EBBB40;
-                border-radius: 25px;
-                transition: all 0.3s;
-            }
-
-            .account-trigger:hover {
-                background: rgba(235, 187, 64, 0.2);
-                transform: translateY(-2px);
-            }
-
-            .account-circle {
-                width: 35px;
-                height: 35px;
-                border-radius: 50%;
-                background: #EBBB40;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-weight: bold;
-                font-size: 14px;
-                color: #000;
-            }
-
-            .account-circle.logged-out {
-                background: #333;
-                color: #EBBB40;
-            }
-
-            .account-name {
-                color: #EBBB40;
-                font-weight: bold;
-                font-size: 14px;
-                -webkit-text-stroke: 1px #000;
-                paint-order: stroke fill;
-            }
-
-            .account-dropdown {
-                position: absolute;
-                top: calc(100% + 8px);
-                right: 0;
-                background: rgba(20, 20, 20, 0.95);
-                border: 2px solid #EBBB40;
-                border-radius: 12px;
-                min-width: 250px;
-                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
-                display: none;
-                overflow: hidden;
-            }
-
-            .account-dropdown.show {
-                display: block;
-            }
-
-            .dropdown-item {
-                padding: 12px 16px;
-                color: #fff;
-                cursor: pointer;
-                transition: background 0.2s;
-                border-bottom: 1px solid rgba(235, 187, 64, 0.2);
-            }
-
-            .dropdown-item:last-child {
-                border-bottom: none;
-            }
-
-            .dropdown-item:hover {
-                background: rgba(235, 187, 64, 0.2);
-            }
-
-            .dropdown-item.logout {
-                color: #ff6b6b;
-                font-weight: bold;
-            }
-
-            /* Login Modal Styles */
-            .login-modal {
-                display: none;
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: rgba(0, 0, 0, 0.85);
-                z-index: 1000;
-                align-items: center;
-                justify-content: center;
-            }
-
-            .login-modal.show {
-                display: flex;
-            }
-
-            .login-box {
-                background: url("/static/wood-texture.jpg") center center;
-                background-size: cover;
-                border: 3px solid #EBBB40;
-                border-radius: 16px;
-                padding: 40px;
-                max-width: 400px;
-                width: 90%;
-                position: relative;
-                box-shadow: 0 25px 80px rgba(0, 0, 0, 0.9);
-            }
-
-            .login-box::before {
-                content: "";
-                position: absolute;
-                inset: 0;
-                background: rgba(0, 0, 0, 0.6);
-                z-index: 0;
-                border-radius: 14px;
-            }
-
-            .login-content {
-                position: relative;
-                z-index: 1;
-            }
-
-            .login-header {
-                text-align: center;
-                margin-bottom: 25px;
-            }
-
-            .login-header img {
-                width: 80px;
-                margin-bottom: 10px;
-            }
-
-            .login-header h2 {
-                color: #EBBB40;
-                margin: 10px 0 5px 0;
-                font-size: 26px;
-            }
-
-            .login-header p {
-                color: #ddd;
-                margin: 0;
-                font-size: 14px;
-                -webkit-text-stroke: 0;
-                text-stroke: 0;
-            }
-
-            .login-form {
-                display: flex;
-                flex-direction: column;
-                gap: 15px;
-            }
-
-            .form-group {
-                display: flex;
-                flex-direction: column;
-                gap: 6px;
-            }
-
-            .form-group label {
-                color: #EBBB40;
-                font-weight: bold;
-                font-size: 14px;
-            }
-
-            .form-group input {
-                padding: 12px;
-                border: 2px solid #EBBB40;
-                border-radius: 8px;
-                background: rgba(0, 0, 0, 0.6);
-                color: #fff;
-                font-size: 14px;
-            }
-
-            .form-group input:focus {
-                outline: none;
-                border-color: #EBBB40;
-                background: rgba(0, 0, 0, 0.8);
-            }
-
-            .login-actions {
-                display: flex;
-                gap: 10px;
-                margin-top: 10px;
-            }
-
-            .btn-login {
-                flex: 1;
-                padding: 12px;
-                background: #EBBB40;
-                color: #000;
-                border: none;
-                border-radius: 8px;
-                font-weight: bold;
-                cursor: pointer;
-                font-size: 15px;
-                transition: all 0.3s;
-            }
-
-            .btn-login:hover {
-                background: #d4a634;
-                transform: translateY(-2px);
-            }
-
-            .btn-cancel {
-                flex: 1;
-                padding: 12px;
-                background: transparent;
-                color: #EBBB40;
-                border: 2px solid #EBBB40;
-                border-radius: 8px;
-                font-weight: bold;
-                cursor: pointer;
-                font-size: 15px;
-                transition: all 0.3s;
-            }
-
-            .btn-cancel:hover {
-                background: rgba(235, 187, 64, 0.1);
-            }
-
-            .login-error {
-                background: rgba(255, 107, 107, 0.2);
-                border: 2px solid #ff6b6b;
-                color: #ff6b6b;
-                padding: 10px;
-                border-radius: 8px;
-                font-size: 13px;
-                display: none;
-            }
-
-            .login-error.show {
-                display: block;
-            }
-
-            .container {
-                max-width: 1000px;
-                margin: 0px auto;
-                text-align: center;
-                padding: 15px 20px;
-            }
-
-            .app-cards {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 30px;
-                margin: 40px 0;
-            }
-
-            .app-card {
-                background: url("/static/wood-texture.jpg") center center;
-                background-size: cover;
-                border: 3px solid #EBBB40;
-                border-radius: 12px;
-                padding: 40px 30px;
-                transition: transform 0.3s, box-shadow 0.3s;
-            }
-
-            .app-card:hover {
-                transform: translateY(-15px) scale(1.05);
-                box-shadow: 0 25px 80px rgba(235, 187, 64, 0.7);
-            }
-
-            .app-card h2 {
-                color: #EBBB40;
-                margin: 20px 0 10px 0;
-                font-size: 32px;
-            }
-
-            .app-card p {
-                color: #fff;
-                font-size: 16px;
-                margin: 15px 0;
-                line-height: 1.6;
-            }
-
-            .app-card a {
-                display: inline-block;
-                background: #EBBB40;
-                color: #000;
-                padding: 15px 40px;
-                text-decoration: none;
-                border-radius: 6px;
-                font-weight: bold;
-                margin-top: 20px;
-                font-size: 16px;
-                transition: background 0.3s;
-            }
-
-            .app-card a:hover {
-                background: #d4a634;
-            }
-
-            .subtitle {
-                color: #EBBB40;
-                font-size: 24px;
-                margin: 10px 0 10px 0;
-            }
-
-            .description {
-                color: #ddd;
-                max-width: 800px;
-                margin: 0 auto 40px auto;
-                line-height: 1.8;
-                font-size: 18px;
-            }
-
-            /* Footer */
-            .pp-footer{
-            margin-top: 60px;
-            padding: 20px 0 30px 0;
-            text-align: center;
-            font-size: 13px;
-            color: #ccc;
-            }
-
-            .pp-footer-line{
-            width: 100%;
-            height: 3px;
-            background: #EBBB40;
-            margin-bottom: 14px;
-            }
-
-            .pp-footer-links{
-            margin-bottom: 8px;
-            }
-
-            .pp-footer-links a{
-            color: #EBBB40;
-            text-decoration: none;
-            font-weight: 700;
-            margin: 0 6px;
-            font-size: 16px;
-            }
-
-            .pp-footer-links a:hover{
-            text-decoration: underline;
-            }
-
-            .pp-footer-copy{
-            font-size: 15px;
-            opacity: 0.75;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <video autoplay muted loop playsinline class="header-video">
-                <source src="/static/beer-header.mp4" type="video/mp4">
-            </video>
-            <div class="header-content">
-                <img src="/static/pp-logo.png" alt="Predict & Pour Logo" width="150" style="margin-bottom: 10px;">
-                <h1>Predict & Pour Forecasting System</h1>
-                <p>Professional Forecasting & Execution Platform</p>
-            </div>
-
-            <!-- Account Widget -->
-            <div class="account-widget">
-                <div class="account-trigger" id="accountTrigger">
-                    <div class="account-circle logged-out" id="accountCircle">—</div>
-                    <span class="account-name" id="accountName">Login</span>
-                </div>
-                <div class="account-dropdown" id="accountDropdown">
-                    <div class="dropdown-item logout" id="logoutBtn">Logout</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="container">
-            <h2 class="subtitle">Choose Your Tool</h2>
-            <p class="description">
-                A complete forecasting solution: Generate multi-model AI predictions with Predict,
-                then automate execution with Pour. The perfect one-two punch for data-driven forecasting.
-            </p>
-
-            <div class="app-cards">
-                <div class="app-card">
-                    <img src="/static/predict-logo.png" alt="Predict Logo" style="width: 150px; height: 150px; margin: 10px 0;">
-                    <h2>Predict</h2>
-                    <p>Multi-model forecasting powered by advanced algorithims and AI models. Choose from 8 different forecasting models to predict future sales.</p>
-                    <a href="/predict">Launch Predict →</a>
-                </div>
-
-                <div class="app-card">
-                    <img src="/static/pour-logo.png" alt="Pour Logo" style="width: 150px; height: 150px; margin: 10px 0;">
-                    <h2>Pour</h2>
-                    <p>Automated forecast execution into OnePortal. Smart calibration and one-click import automation for your data.</p>
-                    <a href="/pour">Launch Pour →</a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Login Modal -->
-        <div class="login-modal" id="loginModal">
-            <div class="login-box">
-                <div class="login-content">
-                    <div class="login-header">
-                        <img src="/static/pp-logo.png" alt="Predict & Pour">
-                        <h2>Login Required</h2>
-                        <p>Please login to access Predict & Pour</p>
-                    </div>
-                    <div class="login-error" id="loginError"></div>
-                    <form class="login-form" id="loginForm">
-                        <div class="form-group">
-                            <label for="loginUsername">Username</label>
-                            <input type="text" id="loginUsername" required autocomplete="username">
-                        </div>
-                        <div class="form-group">
-                            <label for="loginPassword">Password</label>
-                            <input type="password" id="loginPassword" required autocomplete="current-password">
-                        </div>
-                        <div class="login-actions">
-                            <button type="submit" class="btn-login">Login</button>
-                            <button type="button" class="btn-cancel" id="cancelLogin">Cancel</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <!-- FOOTER -->
-        <div class="pp-footer">
-        <div class="pp-footer-line"></div>
-
-        <div class="pp-footer-links">
-            <a href="/static/about.html">About</a>
-            <span>•</span>
-            <a href="mailto:aaron@predictandpour.com">Support</a>
-            <span>•</span>
-            <a href="/static/faqs.html">FAQs & Resources</a>
-            <span>•</span>
-            <a href="/static/privacy.html">Privacy Policy</a>
-        </div>
-
-        <div class="pp-footer-copy">
-            © <span id="ppYear"></span> Predict &amp; Pour LLC. All rights reserved.
-        </div>
-        </div>
-
-        <script>
-        // ============================================
-        // GLOBAL STATE
-        // ============================================
-        let currentUser = null;
-
-        // ============================================
-        // AUTH & ACCOUNT DROPDOWN
-        // ============================================
-        
-        async function checkAuthStatus() {
-            try {
-                const response = await fetch('/api/auth/me', {
-                    credentials: 'include'
-                });
-                const data = await response.json();
-                
-                if (data.logged_in) {
-                    currentUser = { username: data.username || 'User' };
-                    updateAccountWidget(true, currentUser.username);
-                } else {
-                    currentUser = null;
-                    updateAccountWidget(false);
-                }
-            } catch (error) {
-                console.error('Auth check error:', error);
-                updateAccountWidget(false);
-            }
-        }
-
-        function updateAccountWidget(isLoggedIn, username = '') {
-            const circle = document.getElementById('accountCircle');
-            const name = document.getElementById('accountName');
-            
-            if (isLoggedIn && username) {
-                // Extract initials
-                const parts = username.split(/[\s._-]+/);
-                let initials = '';
-                if (parts.length >= 2) {
-                    initials = parts[0][0].toUpperCase() + parts[1][0].toUpperCase();
-                } else {
-                    initials = username.substring(0, 2).toUpperCase();
-                }
-                
-                circle.textContent = initials;
-                circle.classList.remove('logged-out');
-                name.textContent = username;
-            } else {
-                circle.textContent = '—';
-                circle.classList.add('logged-out');
-                name.textContent = 'Login';
-            }
-        }
-
-        // Account dropdown toggle
-        document.getElementById('accountTrigger').addEventListener('click', function(e) {
-            e.stopPropagation();
-            const dropdown = document.getElementById('accountDropdown');
-            
-            if (currentUser) {
-                dropdown.classList.toggle('show');
-            } else {
-                showLoginModal();
-            }
-        });
-
-        // Close dropdown when clicking outside
-        document.addEventListener('click', function() {
-            document.getElementById('accountDropdown').classList.remove('show');
-        });
-
-        // Logout
-        document.getElementById('logoutBtn').addEventListener('click', async function() {
-            try {
-                await fetch('/api/auth/logout', {
-                    method: 'POST',
-                    credentials: 'include'
-                });
-                currentUser = null;
-                updateAccountWidget(false);
-                document.getElementById('accountDropdown').classList.remove('show');
-            } catch (error) {
-                console.error('Logout error:', error);
-            }
-        });
-
-        // ============================================
-        // LOGIN MODAL
-        // ============================================
-        
-        function showLoginModal() {
-            document.getElementById('loginModal').classList.add('show');
-            document.getElementById('loginUsername').focus();
-        }
-
-        function hideLoginModal() {
-            document.getElementById('loginModal').classList.remove('show');
-            document.getElementById('loginForm').reset();
-            document.getElementById('loginError').classList.remove('show');
-        }
-
-        document.getElementById('cancelLogin').addEventListener('click', hideLoginModal);
-
-        document.getElementById('loginForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const username = document.getElementById('loginUsername').value;
-            const password = document.getElementById('loginPassword').value;
-            const errorDiv = document.getElementById('loginError');
-            
-            errorDiv.classList.remove('show');
-            
-            try {
-                const response = await fetch('/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`,
-                    credentials: 'include'
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok && data.status === 'ok') {
-                    currentUser = { username: data.username };
-                    updateAccountWidget(true, data.username);
-                    hideLoginModal();
-                } else {
-                    errorDiv.textContent = data.detail || 'Login failed';
-                    errorDiv.classList.add('show');
-                }
-            } catch (error) {
-                console.error('Login error:', error);
-                errorDiv.textContent = 'Network error. Please try again.';
-                errorDiv.classList.add('show');
-            }
-        });
-
-        // ============================================
-        // INITIALIZATION
-        // ============================================
-        
-        checkAuthStatus();
-        document.getElementById("ppYear").textContent = new Date().getFullYear();
-        </script>
-    </body>
-    </html>
-    """
-
-    return HTMLResponse(content=page_html)
+async def root():
+    """Homepage — served from static/index.html"""
+    return FileResponse("static/index.html")
 
 @app.get("/predict")
 async def serve_predict():
@@ -1638,7 +973,8 @@ def process_single_sku(
     run_catboost_flag: bool,
     run_holt_flag: bool,
     run_lgbm_flag: bool,
-    run_nbeats_flag: bool
+    run_nbeats_flag: bool,
+    job_id: str = None
 ) -> pd.DataFrame:
     """
     Process a single SKU with all selected models in parallel.
@@ -1653,48 +989,67 @@ def process_single_sku(
         base = pd.DataFrame({"ds": df_sku["ds"].unique()}).sort_values("ds")
         base = base.merge(df_sku[["ds", "y"]], on="ds", how="left")
 
-        model_futures = {}
-        with ThreadPoolExecutor(max_workers=8) as executor:  # Changed from 6 to 8
-            if run_prophet_flag:
-                model_futures["house_lager"] = executor.submit(
-                    run_prophet, df_sku, holidays_df, horizon_weeks
-                )
-            if run_neural_flag:
-                model_futures["mind_melt_double_ipa"] = executor.submit(
-                    run_neuralprophet, df_sku, holidays_df, horizon_weeks
-                )
-            if run_sarimax_flag:
-                model_futures["heritage_blend"] = executor.submit(
-                    run_sarimax, df_sku, horizon_weeks
-                )
-            if run_xgb_flag:
-                model_futures["west_coast_ipa"] = executor.submit(
-                    run_xgboost, df_sku, horizon_weeks
-                )
-            if run_catboost_flag:
-                model_futures["creamy_nitro"] = executor.submit(
-                    run_catboost, df_sku, horizon_weeks
-                )
-            if run_holt_flag:
-                model_futures["small_batch_classic"] = executor.submit(
-                    run_holtwinters, df_sku, horizon_weeks
-                )
-            if run_lgbm_flag:
-                model_futures["light_hazy"] = executor.submit(
-                    run_lightgbm, df_sku, horizon_weeks
-                )
-            if run_nbeats_flag:
-                model_futures["legacy_grand_reserve"] = executor.submit(
-                    run_nbeats, df_sku, horizon_weeks
-                )
+        # Build list of models to run and track their status
+        model_tasks = {}
+        if run_prophet_flag:
+            model_tasks["house_lager"] = ("run_prophet", run_prophet, (df_sku, holidays_df, horizon_weeks))
+        if run_neural_flag:
+            model_tasks["mind_melt_double_ipa"] = ("run_neuralprophet", run_neuralprophet, (df_sku, holidays_df, horizon_weeks))
+        if run_sarimax_flag:
+            model_tasks["heritage_blend"] = ("run_sarimax", run_sarimax, (df_sku, horizon_weeks))
+        if run_xgb_flag:
+            model_tasks["west_coast_ipa"] = ("run_xgboost", run_xgboost, (df_sku, horizon_weeks))
+        if run_catboost_flag:
+            model_tasks["creamy_nitro"] = ("run_catboost", run_catboost, (df_sku, horizon_weeks))
+        if run_holt_flag:
+            model_tasks["small_batch_classic"] = ("run_holtwinters", run_holtwinters, (df_sku, horizon_weeks))
+        if run_lgbm_flag:
+            model_tasks["light_hazy"] = ("run_lightgbm", run_lightgbm, (df_sku, horizon_weeks))
+        if run_nbeats_flag:
+            model_tasks["legacy_grand_reserve"] = ("run_nbeats", run_nbeats, (df_sku, horizon_weeks))
 
-        # Merge model outputs
-        for model_name, future in model_futures.items():
-            try:
-                result_df = future.result()
-                base = base.merge(result_df, on="ds", how="outer", validate="one_to_one")
-            except Exception as e:
-                print(f"Warning: {model_name} failed for {sku}: {e}")
+        # Initialize model status for this SKU
+        model_status = {name: "pending" for name in model_tasks}
+        
+        # Update job with current SKU and model status
+        if job_id and job_id in FORECAST_JOBS:
+            FORECAST_JOBS[job_id].update({
+                "current_sku": sku,
+                "items_done": idx - 1,
+                "items_total": total,
+                "model_status": {MODEL_ABBREV.get(k, k): v for k, v in model_status.items()},
+            })
+
+        model_futures = {}
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            # Submit all model tasks
+            for model_name, (label, func, args) in model_tasks.items():
+                future = executor.submit(func, *args)
+                model_futures[future] = model_name
+                model_status[model_name] = "running"
+            
+            # Update status to show all running
+            if job_id and job_id in FORECAST_JOBS:
+                FORECAST_JOBS[job_id]["model_status"] = {
+                    MODEL_ABBREV.get(k, k): v for k, v in model_status.items()
+                }
+
+            # Collect results as each model completes
+            for future in as_completed(model_futures):
+                model_name = model_futures[future]
+                try:
+                    result_df = future.result()
+                    base = base.merge(result_df, on="ds", how="outer", validate="one_to_one")
+                    model_status[model_name] = "done"
+                except Exception as e:
+                    print(f"Warning: {model_name} failed for {sku}: {e}")
+                    model_status[model_name] = "failed"
+                
+                # Update job with model completion
+                if job_id and job_id in FORECAST_JOBS:
+                    FORECAST_JOBS[job_id]["model_status"] = {
+                        MODEL_ABBREV.get(k, k): v for k, v in model_status.items()
+                    }
 
         # Compute model-specific accuracy
         for model_prefix in [
@@ -1736,7 +1091,16 @@ async def process_forecast_background(
     """Background task to process forecast - runs async, doesn't block HTTP request"""
     try:
         # Mark job as processing
-        FORECAST_JOBS[job_id] = {"status": "processing", "progress": 0}
+        FORECAST_JOBS[job_id] = {
+            "status": "processing",
+            "progress": 0,
+            "stage": "loading",
+            "detail": "Warming up the brewery... Loading models",
+            "items_done": 0,
+            "items_total": 0,
+            "current_sku": None,
+            "model_status": {},
+        }
         
         # Parse configuration
         if config_dict:
@@ -1815,6 +1179,15 @@ async def process_forecast_background(
         print(f"Running up to 4 SKUs simultaneously, each with 8 models in parallel")
         print("="*60 + "\n")
         
+        # Update stage: forecasting
+        FORECAST_JOBS[job_id].update({
+            "stage": "forecasting",
+            "detail": "Tapping the kegs... Starting forecasts",
+            "items_total": total,
+        })
+        
+        completed_count = 0
+        
         with ThreadPoolExecutor(max_workers=4) as sku_executor:
             # Submit all SKUs for processing
             sku_futures = []
@@ -1824,7 +1197,8 @@ async def process_forecast_background(
                     sku, df_sku, idx, total, min_points, holidays_df, horizon_weeks,
                     run_prophet_flag, run_neural_flag, run_sarimax_flag,
                     run_xgb_flag, run_catboost_flag, run_holt_flag,
-                    run_lgbm_flag, run_nbeats_flag
+                    run_lgbm_flag, run_nbeats_flag,
+                    job_id
                 )
                 sku_futures.append((sku, future))
             
@@ -1836,6 +1210,14 @@ async def process_forecast_background(
                         detailed_rows.append(result)
                 except Exception as e:
                     print(f"Error collecting results for {sku}: {e}")
+                
+                completed_count += 1
+                progress_pct = int((completed_count / total) * 90)  # Reserve 90-100% for Excel export
+                FORECAST_JOBS[job_id].update({
+                    "items_done": completed_count,
+                    "progress": progress_pct,
+                    "detail": f"Tapping the kegs... SKU {sku} ({completed_count} of {total})",
+                })
 
         if not detailed_rows:
             raise HTTPException(
@@ -1849,6 +1231,12 @@ async def process_forecast_background(
         print("===== CONCAT COMPLETE =====\n")
 
         # ======================== Excel Export ========================
+        FORECAST_JOBS[job_id].update({
+            "stage": "exporting",
+            "detail": "Bottling the results... Building Excel export",
+            "progress": 92,
+            "model_status": {},
+        })
         output = BytesIO()
 
         # REORDER DATAFRAME COLUMNS AND REMOVE UNWANTED COLUMNS
@@ -2210,7 +1598,13 @@ async def check_forecast_status(request: Request, job_id: str):
         "status": job_data["status"],
         "job_id": job_id,
         "error": job_data.get("error"),
-        "progress": job_data.get("progress", 0)
+        "progress": job_data.get("progress", 0),
+        "stage": job_data.get("stage", ""),
+        "detail": job_data.get("detail", ""),
+        "items_done": job_data.get("items_done", 0),
+        "items_total": job_data.get("items_total", 0),
+        "current_sku": job_data.get("current_sku"),
+        "model_status": job_data.get("model_status", {}),
     }
 
 @app.get("/api/forecast/download/{job_id}")
