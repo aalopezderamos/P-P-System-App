@@ -94,7 +94,7 @@ body::before {
     flex-direction: column;
 }
 
-.header-content img { margin-bottom: 10px; }
+.header-content img { margin-bottom: 10px; max-width: 150px; }
 
 .header h1,
 .header-content h1 {
