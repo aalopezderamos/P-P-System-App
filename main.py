@@ -720,7 +720,8 @@ async def auth_me(request: Request):
         username = request.session.get("username", "User")
         return {
             "logged_in": True,
-            "username": username
+            "username": username,
+            "is_admin": request.session.get("is_admin", False)
         }
     else:
         return {"logged_in": False}
@@ -738,6 +739,7 @@ async def auth_login(request: Request, username: str = Form(...), password: str 
         request.session["pp_logged_in"] = True
         request.session["user_id"] = 9999  # Fake ID for master account
         request.session["username"] = "Aaron Lopez"
+        request.session["is_admin"] = True
         return {"status": "ok", "username": "Aaron Lopez"}
     
     # Normal database authentication below
@@ -813,7 +815,120 @@ async def auth_logout(request: Request):
     request.session.clear()
     return {"status": "ok"}
 
-
+# =====================================================================
+# ADMIN API ROUTES — User Management
+# =====================================================================
+ 
+def _require_admin(request: Request):
+    """Require the user to be logged in as admin"""
+    if not _is_logged_in(request):
+        raise HTTPException(status_code=401, detail="Not logged in")
+    if not request.session.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+ 
+@app.get("/api/admin/users")
+async def admin_list_users(request: Request):
+    """List all users"""
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        users = db.query(User).order_by(User.id).all()
+        return [
+            {
+                "id": u.id,
+                "username": u.username,
+                "email": u.email,
+                "is_active": u.is_active,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+                "last_login": u.last_login.isoformat() if u.last_login else None,
+            }
+            for u in users
+        ]
+    finally:
+        db.close()
+ 
+@app.post("/api/admin/users")
+async def admin_create_user(request: Request):
+    """Create a new user"""
+    _require_admin(request)
+    body = await request.json()
+    username = body.get("username", "").strip()
+    email = body.get("email", "").strip()
+    password = body.get("password", "")
+ 
+    if not username or not email or not password:
+        raise HTTPException(status_code=400, detail="Username, email, and password are required")
+ 
+    db = SessionLocal()
+    try:
+        existing = db.query(User).filter(
+            (User.username == username) | (User.email == email)
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Username or email already exists")
+ 
+        new_user = User(
+            username=username,
+            email=email,
+            password_hash=get_password_hash(password),
+            is_active=True,
+            created_at=datetime.utcnow()
+        )
+        db.add(new_user)
+        db.commit()
+        return {"status": "ok", "message": f"User '{username}' created"}
+    finally:
+        db.close()
+ 
+@app.delete("/api/admin/users/{user_id}")
+async def admin_delete_user(request: Request, user_id: int):
+    """Delete a user"""
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        db.delete(user)
+        db.commit()
+        return {"status": "ok", "message": f"User '{user.username}' deleted"}
+    finally:
+        db.close()
+ 
+@app.put("/api/admin/users/{user_id}/toggle")
+async def admin_toggle_user(request: Request, user_id: int):
+    """Toggle user active/inactive"""
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        user.is_active = not user.is_active
+        db.commit()
+        return {"status": "ok", "is_active": user.is_active}
+    finally:
+        db.close()
+ 
+@app.put("/api/admin/users/{user_id}/password")
+async def admin_reset_password(request: Request, user_id: int):
+    """Reset a user's password"""
+    _require_admin(request)
+    body = await request.json()
+    password = body.get("password", "")
+    if not password:
+        raise HTTPException(status_code=400, detail="Password is required")
+ 
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        user.password_hash = get_password_hash(password)
+        db.commit()
+        return {"status": "ok", "message": f"Password reset for '{user.username}'"}
+    finally:
+        db.close()
 # =====================================================================
 # ROUTES - Homepage & Navigation
 # =====================================================================
