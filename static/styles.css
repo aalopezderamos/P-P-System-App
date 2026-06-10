@@ -1,0 +1,366 @@
+/* =============================================
+   Predict & Pour — Global Theme
+   Change these variables to restyle everything.
+   ============================================= */
+
+:root {
+    /* === COLORS === */
+    --pp-gold: #EBBB40;
+    --pp-gold-hover: #d4a634;
+    --pp-gold-dim: rgba(235, 187, 64, 0.2);
+    --pp-bg: #000;
+    --pp-surface: rgba(20, 20, 20, 0.95);
+    --pp-text: #fff;
+    --pp-text-muted: #ccc;
+    --pp-text-dim: #999;
+    --pp-success: #4CAF50;
+    --pp-error: #ff6b6b;
+    --pp-border: rgba(235, 187, 64, 0.3);
+
+    /* === TYPOGRAPHY === */
+    --pp-font: Arial, sans-serif;
+    --pp-font-size-base: 16px;
+
+    /* === TEXTURES === */
+    --pp-bg-texture: url("/static/background-texture.png");
+    --pp-wood-texture: url("/static/wood-texture.jpg");
+}
+
+/* === BASE === */
+body {
+    margin: 0;
+    font-family: var(--pp-font);
+    font-size: var(--pp-font-size-base);
+    background: var(--pp-bg);
+    color: var(--pp-text);
+    position: relative;
+}
+
+body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: var(--pp-bg-texture) repeat;
+    opacity: 0.18;
+    z-index: -1;
+    pointer-events: none;
+}
+
+/* =============================================
+   HEADER — Video banner with logo
+   ============================================= */
+.header {
+    position: relative;
+    overflow: visible;
+    color: var(--pp-gold);
+    padding: 20px;
+    text-align: center;
+    border-bottom: 3px solid var(--pp-gold);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 150px;
+}
+
+.header-video {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    z-index: 0;
+}
+
+.header-content {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+}
+
+.header-content img { margin-bottom: 10px; }
+
+.header h1,
+.header-content h1 {
+    -webkit-text-stroke: 4px #000;
+    text-stroke: 4px #000;
+    paint-order: stroke fill;
+    margin: 10px 0;
+    font-size: 48px;
+}
+
+.header p,
+.header-content p {
+    -webkit-text-stroke: 3px #000;
+    text-stroke: 3px #000;
+    paint-order: stroke fill;
+    margin: 0;
+    font-size: 26px;
+}
+
+/* =============================================
+   ACCOUNT WIDGET — Login/logout dropdown
+   ============================================= */
+.account-widget {
+    position: absolute;
+    bottom: 8px;
+    right: 20px;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.account-trigger {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.6);
+    border: 2px solid var(--pp-gold);
+    border-radius: 25px;
+    transition: all 0.3s;
+}
+
+.account-trigger:hover {
+    background: var(--pp-gold-dim);
+    transform: translateY(-2px);
+}
+
+.account-circle {
+    width: 35px;
+    height: 35px;
+    border-radius: 50%;
+    background: var(--pp-gold);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 14px;
+    color: #000;
+}
+
+.account-circle.logged-out {
+    background: #333;
+    color: var(--pp-gold);
+}
+
+.account-name {
+    color: var(--pp-gold);
+    font-weight: bold;
+    font-size: 14px;
+    -webkit-text-stroke: 1px #000;
+    paint-order: stroke fill;
+}
+
+.account-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    background: var(--pp-surface);
+    border: 2px solid var(--pp-gold);
+    border-radius: 12px;
+    min-width: 250px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+    display: none;
+    overflow: hidden;
+}
+
+.account-dropdown.show { display: block; }
+
+.dropdown-item {
+    padding: 12px 16px;
+    color: var(--pp-text);
+    cursor: pointer;
+    transition: background 0.2s;
+    border-bottom: 1px solid var(--pp-border);
+}
+
+.dropdown-item:last-child { border-bottom: none; }
+.dropdown-item:hover { background: var(--pp-gold-dim); }
+.dropdown-item.logout { color: var(--pp-error); font-weight: bold; }
+
+/* =============================================
+   LOGIN MODAL
+   ============================================= */
+.login-modal {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+
+.login-modal.show { display: flex; }
+
+.login-box {
+    background: var(--pp-wood-texture) center center;
+    background-size: cover;
+    border: 3px solid var(--pp-gold);
+    border-radius: 16px;
+    padding: 40px;
+    max-width: 400px;
+    width: 90%;
+    position: relative;
+    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.9);
+}
+
+.login-box::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 0;
+    border-radius: 14px;
+}
+
+.login-content {
+    position: relative;
+    z-index: 1;
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+.login-header img { width: 80px; margin-bottom: 10px; }
+
+.login-header h2 {
+    color: var(--pp-gold);
+    margin: 10px 0 5px 0;
+    font-size: 26px;
+}
+
+.login-header p {
+    color: #ddd;
+    margin: 0;
+    font-size: 14px;
+    -webkit-text-stroke: 0;
+    text-stroke: 0;
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.form-group label {
+    color: var(--pp-gold);
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.form-group input {
+    padding: 12px;
+    border: 2px solid var(--pp-gold);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.6);
+    color: var(--pp-text);
+    font-size: 14px;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: var(--pp-gold);
+    background: rgba(0, 0, 0, 0.8);
+}
+
+.login-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.btn-login {
+    flex: 1;
+    padding: 12px;
+    background: var(--pp-gold);
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 15px;
+    transition: all 0.3s;
+}
+
+.btn-login:hover {
+    background: var(--pp-gold-hover);
+    transform: translateY(-2px);
+}
+
+.btn-cancel {
+    flex: 1;
+    padding: 12px;
+    background: transparent;
+    color: var(--pp-gold);
+    border: 2px solid var(--pp-gold);
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 15px;
+    transition: all 0.3s;
+}
+
+.btn-cancel:hover {
+    background: rgba(235, 187, 64, 0.1);
+}
+
+.login-error {
+    background: rgba(255, 107, 107, 0.2);
+    border: 2px solid var(--pp-error);
+    color: var(--pp-error);
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    display: none;
+}
+
+.login-error.show { display: block; }
+
+/* =============================================
+   FOOTER
+   ============================================= */
+.pp-footer {
+    margin-top: 60px;
+    padding: 20px 0 30px 0;
+    text-align: center;
+    font-size: 13px;
+    color: var(--pp-text-muted);
+}
+
+.pp-footer-line {
+    width: 100%;
+    height: 3px;
+    background: var(--pp-gold);
+    margin-bottom: 14px;
+}
+
+.pp-footer-links { margin-bottom: 8px; }
+
+.pp-footer-links a {
+    color: var(--pp-gold);
+    text-decoration: none;
+    font-weight: 700;
+    margin: 0 6px;
+    font-size: 16px;
+}
+
+.pp-footer-links a:hover { text-decoration: underline; }
+
+.pp-footer-copy {
+    font-size: 15px;
+    opacity: 0.75;
+}
