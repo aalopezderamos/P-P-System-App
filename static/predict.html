@@ -782,6 +782,31 @@
             }
 
             try {
+                // Step 0: Wake up the container if it's sleeping
+                document.getElementById('statusMsg').textContent = 'Warming up the brewery... Waking the server';
+                
+                let serverReady = false;
+                for (let i = 0; i < 12; i++) { // Try for up to 60 seconds
+                    try {
+                        const healthCheck = await fetch('/health', {
+                            credentials: 'include',
+                            signal: AbortSignal.timeout(8000)
+                        });
+                        if (healthCheck.ok) {
+                            serverReady = true;
+                            break;
+                        }
+                    } catch (e) {
+                        // Server still waking — wait and retry
+                    }
+                    document.getElementById('statusMsg').textContent = `Warming up the brewery... Waking the server (${i + 1}/12)`;
+                    await new Promise(r => setTimeout(r, 5000));
+                }
+                
+                if (!serverReady) {
+                    throw new Error('Server took too long to start. Please try again in a minute.');
+                }
+                
                 document.getElementById('statusMsg').textContent = 'Warming up the brewery... Preparing forecast';
                 
                 // Step 1: Start the forecast job
@@ -793,8 +818,14 @@
                 });
 
                 if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.detail || 'Failed to start forecast');
+                    let errorMsg = 'Failed to start forecast';
+                    try {
+                        const error = await response.json();
+                        errorMsg = error.detail || error.message || errorMsg;
+                    } catch (e) {
+                        errorMsg = `Server returned status ${response.status}. It may still be starting up — try again.`;
+                    }
+                    throw new Error(errorMsg);
                 }
 
                 const startData = await response.json();
