@@ -798,9 +798,10 @@
                 document.getElementById('statusMsg').textContent = 'Warming up the brewery... Preparing forecast';
                 
                 // Step 1: Start the forecast job (direct to Azure — bypasses Cloudflare timeout)
-                const response = await fetch('https://predictandpour.politestone-51eaffb8.centralus.azurecontainerapps.io/api/forecast', {
+                const response = await fetch('/api/forecast', {
                     method: 'POST',
                     body: formData,
+                    credentials: 'include',
                     signal: abortController.signal
                 });
 
