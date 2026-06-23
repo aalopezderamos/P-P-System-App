@@ -270,6 +270,7 @@
 
         <!-- Account Widget -->
         <div class="account-widget">
+            <div id="forecastBadge" style="padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 900; letter-spacing: 0.5px; display: none;"></div>
             <div class="account-trigger" id="accountTrigger">
                 <div class="account-circle logged-out" id="accountCircle">—</div>
                 <span class="account-name" id="accountName">Login</span>
@@ -733,6 +734,18 @@
         // ============================================
 
         function handleStartForecast() {
+            // Check business hours first
+            if (!isBusinessHours()) {
+                alert(
+                    'Forecasting is currently closed.\n\n' +
+                    'Forecasting hours:\n' +
+                    'Monday – Friday\n' +
+                    '5:00 AM – 5:00 PM Central Time\n\n' +
+                    'Please try again during business hours.'
+                );
+                return;
+            }
+
             if (!currentUser) {
                 // User not logged in - show login modal
                 window.pendingForecastStart = true;
@@ -782,38 +795,12 @@
             }
 
             try {
-                // Step 0: Wake up the container if it's sleeping
-                document.getElementById('statusMsg').textContent = 'Warming up the brewery... Waking the server';
-                
-                let serverReady = false;
-                for (let i = 0; i < 12; i++) { // Try for up to 60 seconds
-                    try {
-                        const healthCheck = await fetch('/health', {
-                            credentials: 'include',
-                            signal: AbortSignal.timeout(8000)
-                        });
-                        if (healthCheck.ok) {
-                            serverReady = true;
-                            break;
-                        }
-                    } catch (e) {
-                        // Server still waking — wait and retry
-                    }
-                    document.getElementById('statusMsg').textContent = `Warming up the brewery... Waking the server (${i + 1}/12)`;
-                    await new Promise(r => setTimeout(r, 5000));
-                }
-                
-                if (!serverReady) {
-                    throw new Error('Server took too long to start. Please try again in a minute.');
-                }
-                
                 document.getElementById('statusMsg').textContent = 'Warming up the brewery... Preparing forecast';
                 
-                // Step 1: Start the forecast job
-                const response = await fetch('/api/forecast', {
+                // Step 1: Start the forecast job (direct to Azure — bypasses Cloudflare timeout)
+                const response = await fetch('https://predictandpour.politestone-51eaffb8.centralus.azurecontainerapps.io/api/forecast', {
                     method: 'POST',
                     body: formData,
-                    credentials: 'include', // MODIFIED: Added credentials
                     signal: abortController.signal
                 });
 
@@ -991,10 +978,49 @@
         }
 
         // ============================================
+        // ============================================
+        // BUSINESS HOURS CHECK
+        // ============================================
+
+        function isBusinessHours() {
+            // Convert current time to Central Time
+            const now = new Date();
+            const ct = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+            const day = ct.getDay();    // 0=Sun, 1=Mon ... 6=Sat
+            const hour = ct.getHours(); // 0-23
+
+            // Monday-Friday, 5:00 AM - 5:00 PM CT
+            return day >= 1 && day <= 5 && hour >= 5 && hour < 17;
+        }
+
+        function updateForecastBadge() {
+            const badge = document.getElementById('forecastBadge');
+            if (!badge) return;
+
+            const open = isBusinessHours();
+            badge.style.display = 'block';
+
+            if (open) {
+                badge.textContent = '● Forecasting Available';
+                badge.style.background = 'rgba(76, 175, 80, 0.2)';
+                badge.style.color = '#4CAF50';
+                badge.style.border = '1px solid rgba(76, 175, 80, 0.5)';
+            } else {
+                badge.textContent = '● Forecasting Closed';
+                badge.style.background = 'rgba(255, 107, 107, 0.2)';
+                badge.style.color = '#ff6b6b';
+                badge.style.border = '1px solid rgba(255, 107, 107, 0.5)';
+            }
+        }
+
+        // ============================================
         // INITIALIZATION - NEW: Check auth on load
         // ============================================
         
         checkAuthStatus();
+        updateForecastBadge();
+        // Refresh the badge every minute
+        setInterval(updateForecastBadge, 60000);
     </script>
         <!-- FOOTER -->
         <div class="pp-footer">
