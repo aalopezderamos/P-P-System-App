@@ -41,5 +41,4 @@
     "rewrite": "/static/index.html",
     "exclude": ["/static/*", "/api/*"]
   }
-  
 }
