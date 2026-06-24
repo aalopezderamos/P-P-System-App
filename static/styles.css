@@ -22,8 +22,8 @@
     --pp-font-size-base: 16px;
 
     /* === TEXTURES === */
-    --pp-bg-texture: url("/static/background-texture.png");
-    --pp-wood-texture: url("/static/wood-texture.jpg");
+    --pp-bg-texture: url("/background-texture.png");
+    --pp-wood-texture: url("/wood-texture.jpg");
 }
 
 /* === BASE === */
