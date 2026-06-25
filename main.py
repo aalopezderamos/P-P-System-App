@@ -1021,7 +1021,18 @@ def parse_ab_report(ab_report_bytes: bytes) -> Dict:
         }
     
     return lookup
-
+@app.options("/api/forecast")
+async def forecast_options():
+    """Handle CORS preflight for direct Azure forecast uploads"""
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "https://www.predictandpour.com",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400",
+        }
+    )
 @app.post("/api/forecast")
 async def start_forecast(
     background_tasks: BackgroundTasks,
