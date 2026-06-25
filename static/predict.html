@@ -734,18 +734,6 @@
         // ============================================
 
         function handleStartForecast() {
-            // Check business hours first
-            if (!isBusinessHours()) {
-                alert(
-                    'Forecasting is currently closed.\n\n' +
-                    'Forecasting hours:\n' +
-                    'Monday – Friday\n' +
-                    '5:00 AM – 5:00 PM Central Time\n\n' +
-                    'Please try again during business hours.'
-                );
-                return;
-            }
-
             if (!currentUser) {
                 // User not logged in - show login modal
                 window.pendingForecastStart = true;
@@ -1002,14 +990,14 @@
 
             if (open) {
                 badge.textContent = '● Forecasting Available';
-                badge.style.background = 'rgba(76, 175, 80, 0.2)';
+                badge.style.background = 'rgba(255, 255, 255, 0.1)';
                 badge.style.color = '#4CAF50';
-                badge.style.border = '1px solid rgba(76, 175, 80, 0.5)';
+                badge.style.border = '1px solid rgba(255, 255, 255, 0.2)';
             } else {
                 badge.textContent = '● Forecasting Closed';
-                badge.style.background = 'rgba(255, 107, 107, 0.2)';
-                badge.style.color = '#ff6b6b';
-                badge.style.border = '1px solid rgba(255, 107, 107, 0.5)';
+                badge.style.background = 'rgba(255, 255, 255, 0.1)';
+                badge.style.color = '#4CAF50';
+                badge.style.border = '1px solid rgba(255, 255, 255, 0.2)';
             }
         }
 
