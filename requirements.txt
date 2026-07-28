@@ -22,27 +22,16 @@ matplotlib<4
 prophet
 statsmodels
 
-# Neural Prophet
-neuralprophet==0.8.0
-
 # Gradient Boosting Models
 xgboost>=2.0
 catboost
 lightgbm
 
-# Deep Learning Time Series (Darts)
-# NOTE: Installing without [torch] extra to avoid pulling in full PyTorch
-u8darts==0.30.0
-
 # ========================================
 # ML & DEEP LEARNING FRAMEWORKS
 # ========================================
 scikit-learn==1.7.1
-
-# PyTorch (CPU-only) - Installed via Dockerfile for optimal size
-# torch and torchvision are installed separately using CPU-only index
-
-pytorch-lightning
+statsforecast
 
 # ========================================
 # UTILITIES

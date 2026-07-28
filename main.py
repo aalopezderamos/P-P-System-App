@@ -26,11 +26,8 @@ from pydantic import BaseModel
 
 # Forecasting imports (for Predict app)
 from catboost import CatBoostRegressor
-from darts import TimeSeries
-from darts.models import NBEATSModel
 from lightgbm import LGBMRegressor
 from prophet import Prophet
-from pytorch_lightning.callbacks import EarlyStopping
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
@@ -42,12 +39,18 @@ from passlib.context import CryptContext
 from datetime import datetime
 from pathlib import Path
 
+import re
+import smtplib
+from email.mime.text import MIMEText
+
 warnings.filterwarnings("ignore")
 
 # Optional models
+# NeuralProphet and N-BEATS were replaced with StatsForecast (AutoETS / AutoTheta).
+# StatsForecast has no PyTorch dependency.
 try:
-    from neuralprophet import NeuralProphet
-    _HAS_NEURALPROPHET = True
+    from statsforecast import StatsForecast
+    _HAS_NEURALPROPHET = True   # Mind Melt (now AutoETS) — kept name for compatibility
 except ImportError:
     _HAS_NEURALPROPHET = False
 
@@ -57,26 +60,6 @@ try:
     _HAS_XGBOOST = True
 except ImportError:
     _HAS_XGBOOST = False
-
-# Torch 2.6 safe-load fix
-_safe_globals_ctx = None
-_NP_SAFE_GLOBALS = []
-if _HAS_NEURALPROPHET:
-    try:
-        import torch.serialization as _ts
-        from torch.serialization import safe_globals as _safe_globals_ctx
-        from neuralprophet.configure import (
-            ConfigAR, ConfigCountryHolidays, ConfigCustomSeasonality,
-            ConfigEvents, ConfigLaggedRegressor, ConfigSeasonality, ConfigTrend,
-        )
-        _NP_SAFE_GLOBALS = [
-            ConfigSeasonality, ConfigEvents, ConfigTrend, ConfigCountryHolidays,
-            ConfigAR, ConfigLaggedRegressor, ConfigCustomSeasonality,
-        ]
-        _ts.add_safe_globals(_NP_SAFE_GLOBALS)
-    except Exception:
-        _safe_globals_ctx = None
-        _NP_SAFE_GLOBALS = []
 
 # Constants
 WEEK_FREQ = "W-SAT"
@@ -132,6 +115,13 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
 
+class NewsletterSubscriber(Base):
+    __tablename__ = "newsletter_subscribers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 # Create tables on startup
 Base.metadata.create_all(bind=engine)
 
@@ -185,6 +175,9 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # =====================================================================
 # Pydantic Models
 # =====================================================================
+
+class NewsletterRequest(BaseModel):
+    email: str
 
 class ForecastConfig(BaseModel):
     horizon_weeks: int = 12
@@ -368,58 +361,56 @@ def run_prophet(df_sku: pd.DataFrame, holidays_df: pd.DataFrame, horizon_weeks: 
     )
     return out
 
+
 def run_neuralprophet(df_sku: pd.DataFrame, holidays_df: pd.DataFrame, horizon_weeks: int, debug: bool = False) -> pd.DataFrame:
-    if not _HAS_NEURALPROPHET:
-        raise ImportError("neuralprophet is not installed")
-    event_names = holidays_df["holiday"].astype(str).unique().tolist()
-    m = NeuralProphet(
-        weekly_seasonality=True,
-        yearly_seasonality=True,
-        quantiles=[0.05, 0.95],
-        epochs=50,                      # ← Reduced from default ~100-200 (2-4x faster)
-        batch_size=32,                  # ← Explicit batch size (faster)
-        learning_rate=0.1,              # ← Faster learning (default ~0.01)
-    )
-    for ev in event_names:
-        m.add_events(ev, lower_window=-3, upper_window=3)
-    train_df = df_sku[["ds", "y"]].copy()
-    train_df = _add_event_flags(train_df, holidays_df, event_names)
-    missing_train = [ev for ev in event_names if ev not in train_df.columns]
-    if missing_train:
-        raise ValueError(f"Missing event cols in train_df: {missing_train}")
-    def _fit_model():
-        try:
-            return m.fit(train_df, freq=WEEK_FREQ, trainer_config={"enable_checkpointing": False, "logger": False})
-        except TypeError:
-            return m.fit(train_df, freq=WEEK_FREQ)
-    if "_safe_globals_ctx" in globals() and _safe_globals_ctx:
-        with _safe_globals_ctx(_NP_SAFE_GLOBALS):
-            _fit_model()
-    else:
-        _fit_model()
-    last_date = df_sku["ds"].max()
-    future_sats = build_future_saturdays(last_date, horizon_weeks)
-    future = pd.DataFrame({"ds": future_sats})
-    future = _add_event_flags(future, holidays_df, event_names)
-    full_future = (
-        pd.concat([train_df[["ds"] + event_names], future[["ds"] + event_names]], ignore_index=True)
-        .drop_duplicates("ds").sort_values("ds")
-    )
-    if "y" not in full_future.columns:
-        full_future["y"] = np.nan
-    missing_future = [ev for ev in event_names if ev not in full_future.columns]
-    if missing_future:
-        raise ValueError(f"Missing event cols in full_future: {missing_future}")
-    def _predict_model():
-        return m.predict(full_future)
-    if "_safe_globals_ctx" in globals() and _safe_globals_ctx:
-        with _safe_globals_ctx(_NP_SAFE_GLOBALS):
-            forecast = _predict_model()
-    else:
-        forecast = _predict_model()
-    out = forecast[["ds", "yhat1"]].rename(columns={"yhat1": "mind_melt_double_ipa_yhat"})
-    out["mind_melt_double_ipa_yhat_lower"] = forecast.get("yhat1 5.0%", np.nan)
-    out["mind_melt_double_ipa_yhat_upper"] = forecast.get("yhat1 95.0%", np.nan)
+    """
+    Mind Melt Double IPA — now powered by AutoETS (auto-tuned exponential smoothing).
+    Signature kept identical (holidays_df accepted but unused) so callers don't change.
+    """
+    from statsforecast import StatsForecast
+    from statsforecast.models import AutoETS
+ 
+    OUT_COLS = ["ds", "mind_melt_double_ipa_yhat",
+                "mind_melt_double_ipa_yhat_lower", "mind_melt_double_ipa_yhat_upper"]
+ 
+    df_clean = df_sku[["ds", "y"]].dropna(subset=["y"]).copy()
+    if len(df_clean) < 12:
+        return pd.DataFrame(columns=OUT_COLS)
+ 
+    # StatsForecast expects columns: unique_id, ds, y
+    sf_df = df_clean.copy()
+    sf_df["unique_id"] = "series"
+    sf_df = sf_df[["unique_id", "ds", "y"]].sort_values("ds")
+ 
+    try:
+        sf = StatsForecast(models=[AutoETS(season_length=52)], freq=WEEK_FREQ, n_jobs=1)
+        # New API: pass df directly to forecast(), fitted=True gives in-sample values
+        fcst = sf.forecast(df=sf_df, h=int(horizon_weeks), level=[90], fitted=True)
+    except Exception as e:
+        print(f"AutoETS (Mind Melt) failed: {e}")
+        return pd.DataFrame(columns=OUT_COLS)
+ 
+    # Future forecast — columns: unique_id, ds, AutoETS, AutoETS-lo-90, AutoETS-hi-90
+    fut_df = pd.DataFrame({
+        "ds": fcst["ds"].values,
+        "mind_melt_double_ipa_yhat": fcst["AutoETS"].values,
+        "mind_melt_double_ipa_yhat_lower": fcst["AutoETS-lo-90"].values,
+        "mind_melt_double_ipa_yhat_upper": fcst["AutoETS-hi-90"].values,
+    })
+ 
+    # Historical fitted values (for accuracy calc against actuals)
+    try:
+        insample = sf.forecast_fitted_values()
+        hist_df = pd.DataFrame({
+            "ds": insample["ds"].values,
+            "mind_melt_double_ipa_yhat": insample["AutoETS"].values,
+        })
+        hist_df["mind_melt_double_ipa_yhat_lower"] = np.nan
+        hist_df["mind_melt_double_ipa_yhat_upper"] = np.nan
+        out = pd.concat([hist_df, fut_df], ignore_index=True)
+    except Exception:
+        out = fut_df
+ 
     return out
 
 def run_sarimax(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
@@ -604,100 +595,51 @@ def run_lightgbm(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
     return pd.concat([hist_df, fut_df], ignore_index=True)
 
 def run_nbeats(df_sku: pd.DataFrame, horizon_weeks: int) -> pd.DataFrame:
-    # Drop any NaN values in y column first
+    """
+    Legacy Grand Reserve — now powered by AutoTheta (decomposition forecasting).
+    Signature kept identical so callers don't change.
+    """
+    from statsforecast import StatsForecast
+    from statsforecast.models import AutoTheta
+ 
+    OUT_COLS = ["ds", "legacy_grand_reserve_yhat",
+                "legacy_grand_reserve_yhat_lower", "legacy_grand_reserve_yhat_upper"]
+ 
     df_clean = df_sku[["ds", "y"]].dropna(subset=["y"]).copy()
-    
-    if len(df_clean) < 50:  # Need minimum data
-        return pd.DataFrame(columns=["ds", "legacy_grand_reserve_yhat", "legacy_grand_reserve_yhat_lower", "legacy_grand_reserve_yhat_upper"])
-    
+    if len(df_clean) < 12:
+        return pd.DataFrame(columns=OUT_COLS)
+ 
+    sf_df = df_clean.copy()
+    sf_df["unique_id"] = "series"
+    sf_df = sf_df[["unique_id", "ds", "y"]].sort_values("ds")
+ 
     try:
-        series = TimeSeries.from_dataframe(df_clean, "ds", "y", freq=WEEK_FREQ, fill_missing_dates=True)
+        sf = StatsForecast(models=[AutoTheta(season_length=52)], freq=WEEK_FREQ, n_jobs=1)
+        fcst = sf.forecast(df=sf_df, h=int(horizon_weeks), level=[90], fitted=True)
     except Exception as e:
-        print(f"N-BEATS TimeSeries creation failed: {e}")
-        return pd.DataFrame(columns=["ds", "legacy_grand_reserve_yhat", "legacy_grand_reserve_yhat_lower", "legacy_grand_reserve_yhat_upper"])
-
-    n = len(series)
-    
-    # More conservative parameters for shorter series
-    if n < 60:
-        # Too short for N-BEATS to work reliably
-        return pd.DataFrame(columns=["ds", "legacy_grand_reserve_yhat", "legacy_grand_reserve_yhat_lower", "legacy_grand_reserve_yhat_upper"])
-    
-    desired_in = min(26, n // 3)  # Adaptive input length
-    out_len = max(1, int(horizon_weeks))
-    min_in = 8
-    in_len = min(desired_in, max(min_in, n - out_len - 10))  # Leave more buffer
-
-    if n < in_len + out_len + 10:  # Need more buffer
-        return pd.DataFrame(columns=["ds", "legacy_grand_reserve_yhat", "legacy_grand_reserve_yhat_lower", "legacy_grand_reserve_yhat_upper"])
-
-    # Decide whether we can afford a validation split
-    can_val = n >= (in_len + out_len + 25)  # More conservative
-    val_series = None
-    early_cb = None
-    pl_kwargs = {"enable_checkpointing": False, "logger": False}
-
-    if can_val:
-        _, val_series = series.split_before(0.70)
-        early_cb = EarlyStopping(monitor="val_loss", patience=5, mode="min")
-        pl_kwargs["callbacks"] = [early_cb]
-    else:
-        early_cb = EarlyStopping(monitor="train_loss", patience=5, mode="min")
-        pl_kwargs["callbacks"] = [early_cb]
-
-    bs = max(4, min(32, n // 6))  # Smaller batch size
-
-    model = NBEATSModel(
-        input_chunk_length=in_len,
-        output_chunk_length=out_len, # Dialed in forecast strength
-        n_epochs=10,              # ← Reduced from 30 (3x faster)
-        num_stacks=2,             # ← Reduced from default 30
-        num_blocks=1,             # ← Reduced from default 1 (already good)
-        num_layers=2,             # ← Reduced from default 4
-        layer_widths=128,         # ← Reduced from default 256
-        batch_size=bs,
-        random_state=42,
-        pl_trainer_kwargs=pl_kwargs,
-    )
-
+        print(f"AutoTheta (Legacy Grand Reserve) failed: {e}")
+        return pd.DataFrame(columns=OUT_COLS)
+ 
+    fut_df = pd.DataFrame({
+        "ds": fcst["ds"].values,
+        "legacy_grand_reserve_yhat": fcst["AutoTheta"].values,
+        "legacy_grand_reserve_yhat_lower": fcst["AutoTheta-lo-90"].values,
+        "legacy_grand_reserve_yhat_upper": fcst["AutoTheta-hi-90"].values,
+    })
+ 
     try:
-        import torch
-        prev_threads = torch.get_num_threads()
-        torch.set_num_threads(1)
+        insample = sf.forecast_fitted_values()
+        hist_df = pd.DataFrame({
+            "ds": insample["ds"].values,
+            "legacy_grand_reserve_yhat": insample["AutoTheta"].values,
+        })
+        hist_df["legacy_grand_reserve_yhat_lower"] = np.nan
+        hist_df["legacy_grand_reserve_yhat_upper"] = np.nan
+        out = pd.concat([hist_df, fut_df], ignore_index=True)
     except Exception:
-        prev_threads = None
-
-    try:
-        model.fit(series, verbose=False, val_series=val_series)
-    except Exception as e:
-        print(f"N-BEATS fit failed: {e}")
-        if prev_threads is not None:
-            try:
-                import torch
-                torch.set_num_threads(prev_threads)
-            except Exception:
-                pass
-        return pd.DataFrame(columns=["ds", "legacy_grand_reserve_yhat", "legacy_grand_reserve_yhat_lower", "legacy_grand_reserve_yhat_upper"])
-
-    if prev_threads is not None:
-        try:
-            import torch
-            torch.set_num_threads(prev_threads)
-        except Exception:
-            pass
-
-    # Predict future
-    try:
-        forecast = model.predict(out_len)
-        df_pred = forecast.pd_dataframe().reset_index().rename(columns={"index": "ds", "y": "legacy_grand_reserve_yhat"})
-        df_pred["legacy_grand_reserve_yhat_lower"] = np.nan
-        df_pred["legacy_grand_reserve_yhat_upper"] = np.nan
-    except Exception as e:
-        print(f"N-BEATS predict failed: {e}")
-        return pd.DataFrame(columns=["ds", "legacy_grand_reserve_yhat", "legacy_grand_reserve_yhat_lower", "legacy_grand_reserve_yhat_upper"])
-
-    # Skip historical forecasts for simplicity/reliability
-    return df_pred
+        out = fut_df
+ 
+    return out
 
 
 # =====================================================================
@@ -814,6 +756,52 @@ async def auth_register(
 async def auth_logout(request: Request):
     request.session.clear()
     return {"status": "ok"}
+
+# =====================================================================
+# NEWSLETTER
+# =====================================================================
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def send_signup_notification(subscriber_email: str):
+    """Email Aaron when someone subscribes. Silent no-op if SMTP isn't configured."""
+    host = os.getenv("SMTP_HOST")
+    if not host:
+        return  # signup is still saved to the DB
+    try:
+        msg = MIMEText(f"New newsletter signup: {subscriber_email}")
+        msg["Subject"] = "Predict & Pour — New Newsletter Subscriber"
+        msg["From"] = os.getenv("SMTP_USER")
+        msg["To"] = os.getenv("NOTIFY_EMAIL", "aaron@predictandpour.com")
+        with smtplib.SMTP(host, int(os.getenv("SMTP_PORT", "587"))) as server:
+            server.starttls()
+            server.login(os.getenv("SMTP_USER"), os.getenv("SMTP_PASS"))
+            server.send_message(msg)
+    except Exception as e:
+        print(f"[newsletter] notification email failed: {e}")
+
+
+@app.post("/api/newsletter/subscribe")
+def newsletter_subscribe(payload: NewsletterRequest, background_tasks: BackgroundTasks):
+    email = payload.email.strip().lower()
+    if not EMAIL_RE.match(email):
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+
+    db = SessionLocal()
+    try:
+        existing = db.query(NewsletterSubscriber).filter(
+            NewsletterSubscriber.email == email
+        ).first()
+        if existing:
+            return {"message": "You're already on the list!"}
+        db.add(NewsletterSubscriber(email=email))
+        db.commit()
+    finally:
+        db.close()
+
+    background_tasks.add_task(send_signup_notification, email)
+    return {"message": "You're on the list! Welcome aboard."}
 
 # =====================================================================
 # ADMIN API ROUTES — User Management

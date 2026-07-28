@@ -13,11 +13,6 @@ RUN apt-get update && \
 # Copy requirements file
 COPY requirements.txt .
 
-# Install CPU-only PyTorch FIRST (from special index)
-RUN pip install --no-cache-dir \
-    torch torchvision \
-    --index-url https://download.pytorch.org/whl/cpu
-
 # Install remaining dependencies from requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
