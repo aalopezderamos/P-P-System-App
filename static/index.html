@@ -124,7 +124,7 @@
             max-width: 950px;
             padding: 70px 24px;
         }
-        .pp-hero-content img { width: 130px; margin-bottom: 18px; filter: drop-shadow(0 4px 16px rgba(0,0,0,0.6)); }
+        .pp-hero-content img { width: 200px; margin-bottom: 18px; filter: drop-shadow(0 4px 16px rgba(0,0,0,0.6)); }
         .pp-hero h1 {
             font-size: clamp(34px, 5.5vw, 60px);
             line-height: 1.15;
@@ -819,7 +819,7 @@
 
     <div class="pricing-cards">
         <div class="price-card reveal">
-            <h3>Without Predict + Pour</h3>
+            <h3>Without Us</h3>
             <p class="tagline">A manual process that depends on spreadsheets, assumptions, and repetitive data entry.</p>
             <ul>
                 <li>Rely on a single forecasting method or best guess</li>
@@ -831,14 +831,14 @@
         </div>
 
         <div class="price-card featured reveal">
-            <h3>With Predict + Pour</h3>
+            <h3>With Predict and Pour</h3>
             <p class="tagline">A connected forecasting workflow built to predict, calibrate, and execute.</p>
             <ul>
                 <li>Compare your data across multiple forecasting models</li>
                 <li>Automatically surface the model that fits your data best</li>
                 <li>Calibrate forecasts against your existing portal data</li>
-                <li>Write forecasts directly into OnePortal</li>
-                <li>Save time while reducing manual-entry errors</li>
+                <li>Write forecasts directly into OnePortal instantly</li>
+                <li>Save valuabletime while reducing manual-entry errors</li>
             </ul>
             <a href="mailto:aaron@predictandpour.com?subject=Predict%20%2B%20Pour%20Pricing%20Inquiry"
                class="pp-btn pp-btn-gold">
@@ -853,49 +853,34 @@
                 <tr>
                     <th>The forecasting process</th>
                     <th>Without Us</th>
-                    <th>With Predict + Pour</th>
+                    <th>With Predict and Pour</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
                     <td>Forecasting approach</td>
-                    <td class="no">One method or manual selection</td>
+                    <td class="no">One method or manual guesswork</td>
                     <td class="yes">Multi-model comparison</td>
                 </tr>
                 <tr>
                     <td>Choosing the best forecast</td>
                     <td class="no">Manual review and judgment</td>
-                    <td class="yes">Automatically identified</td>
+                    <td class="yes">Automatically identified & Consolidated</td>
                 </tr>
                 <tr>
-                    <td>Excel and CSV processing</td>
-                    <td class="no">Manual cleanup and formatting</td>
-                    <td class="yes">Simple upload and export</td>
-                </tr>
-                <tr>
-                    <td>Forecast calibration</td>
-                    <td class="no">Manual adjustments</td>
-                    <td class="yes">Smart calibration</td>
-                </tr>
-                <tr>
-                    <td>OnePortal forecast entry</td>
-                    <td class="no">Field-by-field entry</td>
-                    <td class="yes">Automated with Pour</td>
+                    <td>AB's OnePortal forecast entry</td>
+                    <td class="no">Field-by-field entry taking hours</td>
+                    <td class="yes">Automated with Pour taking minutes</td>
                 </tr>
                 <tr>
                     <td>Risk of entry errors</td>
                     <td class="no">Higher with repetitive entry</td>
-                    <td class="yes">Reduced through automation</td>
+                    <td class="yes">Reduced through Pour's automation</td>
                 </tr>
                 <tr>
                     <td>End-to-end workflow</td>
                     <td class="no">Disconnected and manual</td>
                     <td class="yes">Forecast, calibrate, and execute</td>
-                </tr>
-                <tr>
-                    <td>Setup and support</td>
-                    <td class="no">Self-managed</td>
-                    <td class="yes">Personalized onboarding and support</td>
                 </tr>
             </tbody>
         </table>
@@ -907,7 +892,7 @@
         <section class="pp-section" id="newsletter">
             <h2 class="reveal">Stay updated with our newsletter</h2>
             <p class="pp-section-lead reveal" style="text-align:center;">
-                Product updates, forecasting tips, and new features — straight to your inbox. No spam, ever.
+                Stay up to date with product updates, forecasting tips, and new features delivered straight to your inbox. No spam, ever.
             </p>
             <form class="newsletter-form reveal" id="newsletterForm">
                 <input type="email" id="newsletterEmail" placeholder="you@company.com" required autocomplete="email" aria-label="Email address">
@@ -1096,23 +1081,23 @@
                 el.textContent = word.slice(0, charIdx);
                 if (charIdx >= word.length) {
                     deleting = true;
-                    setTimeout(tick, 2000);
+                    setTimeout(tick, 900);
                     return;
                 }
-                setTimeout(tick, 110);
+                setTimeout(tick, 55);
             } else {
                 charIdx--;
                 el.textContent = word.slice(0, charIdx);
                 if (charIdx <= 0) {
                     deleting = false;
                     wordIdx = (wordIdx + 1) % words.length;
-                    setTimeout(tick, 350);
+                    setTimeout(tick, 180);
                     return;
                 }
-                setTimeout(tick, 55);
+                setTimeout(tick, 28);
             }
         }
-        setTimeout(tick, 1800);
+        setTimeout(tick, 900);
     })();
 
     // ============================================
